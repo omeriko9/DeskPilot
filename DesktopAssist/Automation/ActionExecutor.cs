@@ -10,15 +10,17 @@ public sealed class ActionExecutor
 {
     private readonly (int width, int height) _screenSize;
     private readonly DesktopAssist.Settings.AppSettings _settings;
+    private string? _currentLayoutHex; // cached last explicitly set layout (8 hex) or detected
 
     // Central list of supported automation function names. Update here if adding new actions.
     // NOTE: "type" is accepted as an alias for "write" at dispatch time but canonical name is "write".
-    public static readonly string[] SupportedFunctions = new[] { "sleep", "moveto", "click", "write", "press", "hotkey", "type" };
+    public static readonly string[] SupportedFunctions = new[] { "sleep", "moveto", "click", "write", "press", "hotkey", "type", "setlayout" };
 
     public ActionExecutor((int width, int height) screenSize, DesktopAssist.Settings.AppSettings settings)
     {
         _screenSize = screenSize;
         _settings = settings;
+        try { _currentLayoutHex = DesktopAssist.Automation.Input.NativeInput.GetCurrentLayoutHex(); } catch { }
     }
 
     public bool Execute(InstructionStep step, CancellationToken token)
@@ -37,6 +39,7 @@ public sealed class ActionExecutor
                 "write" => Write(step),
                 "press" => Press(step),
                 "hotkey" => Hotkey(step),
+                "setlayout" => SetLayout(step),
                 _ => throw new InvalidOperationException($"Unsupported function: {step.Function}")
             };
         }
@@ -84,28 +87,45 @@ public sealed class ActionExecutor
     private bool Write(InstructionStep step)
     {
         if (step.Parameters == null) return false;
-        if (_settings.ForceEnglishLayoutForTyping)
-        {
-            NativeInput.EnsureEnglishLayout(_settings.EnglishLayoutHex, _settings.VerboseNetworkLogging);
-        }
         var text = GetString(step.Parameters, "text") ?? GetString(step.Parameters, "string");
         if (string.IsNullOrEmpty(text)) return false;
         var interval = GetInt(step.Parameters, "interval_ms") ?? 50;
-        Console.WriteLine($"[Action] Write '{text}' interval={interval}ms");
-        foreach (var ch in text)
+        bool isAscii = true;
+        foreach (var c in text)
         {
-            if (char.IsLetterOrDigit(ch))
+            if (c > 0x7F) { isAscii = false; break; }
+        }
+        Console.WriteLine($"[Action] Write '{text}' interval={interval}ms ascii={isAscii}");
+        if (isAscii)
+        {
+            // Optionally enforce English only for ASCII sequences.
+            if (_settings.ForceEnglishLayoutForTyping && !string.Equals(_currentLayoutHex, _settings.EnglishLayoutHex, StringComparison.OrdinalIgnoreCase))
             {
-                ushort vk = (ushort)char.ToUpperInvariant(ch);
-                Console.WriteLine($"[Action][Key] '{ch}' vk=0x{vk:X2}");
-                NativeInput.KeyTap(vk);
+                NativeInput.EnsureEnglishLayout(_settings.EnglishLayoutHex, _settings.VerboseNetworkLogging);
+                _currentLayoutHex = _settings.EnglishLayoutHex;
             }
-            else if (ch == ' ') { Console.WriteLine("[Action][Key] space vk=0x20"); NativeInput.KeyTap(0x20); }
-            else
+            foreach (var ch in text)
             {
-                Console.WriteLine($"[Action][Key][Skip] unsupported char: {ch}");
+                if (char.IsLetterOrDigit(ch))
+                {
+                    ushort vk = (ushort)char.ToUpperInvariant(ch);
+                    Console.WriteLine($"[Action][Key] '{ch}' vk=0x{vk:X2}");
+                    NativeInput.KeyTap(vk);
+                }
+                else if (ch == ' ') { Console.WriteLine("[Action][Key] space vk=0x20"); NativeInput.KeyTap(0x20); }
+                else { Console.WriteLine($"[Action][Key][Skip] unsupported ascii char: {ch}"); }
+                Thread.Sleep(interval);
             }
-            Thread.Sleep(interval);
+        }
+        else
+        {
+            // Use Unicode path; do not force English layout.
+            foreach (var ch in text)
+            {
+                if (ch == '\r' || ch == '\n') { continue; }
+                NativeInput.KeyUnicode(ch);
+                Thread.Sleep(interval);
+            }
         }
         return true;
     }
@@ -260,6 +280,31 @@ public sealed class ActionExecutor
 
         Console.WriteLine($"[Action] Hotkey combo size={collected.Count} source={sourceDescription}");
         NativeInput.KeyCombo(collected.ToArray());
+        return true;
+    }
+
+    private bool SetLayout(InstructionStep step)
+    {
+        if (step.Parameters == null)
+        {
+            Console.WriteLine("[Action][SetLayout][Fail] parameters null");
+            return false;
+        }
+        var hex = GetString(step.Parameters, "hex") ?? GetString(step.Parameters, "layout") ?? GetString(step.Parameters, "id");
+        if (string.IsNullOrWhiteSpace(hex))
+        {
+            Console.WriteLine("[Action][SetLayout][Fail] missing 'hex'/'layout'/'id'");
+            return false;
+        }
+        // Normalize to 8-digit KLID if shorter (e.g., 0409) -> 00000409
+        hex = hex.Trim();
+        if (hex.Length == 4) hex = "0000" + hex;
+        if (hex.Length != 8)
+        {
+            Console.WriteLine($"[Action][SetLayout][Warn] unexpected layout length '{hex}'");
+        }
+        NativeInput.SetLayout(hex, _settings.VerboseNetworkLogging);
+        _currentLayoutHex = hex;
         return true;
     }
 

@@ -58,6 +58,7 @@ internal static class NativeInput
     private const uint MOUSEEVENTF_RIGHTUP = 0x0010;
 
     private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const uint KEYEVENTF_UNICODE = 0x0004;
 
     // Keyboard layout management
     [DllImport("user32.dll", SetLastError = true)]
@@ -113,6 +114,54 @@ internal static class NativeInput
         {
             Console.WriteLine($"[NativeInput][Layout][Error] {ex.Message}");
         }
+    }
+
+    public static void SetLayout(string layoutHex, bool verbose)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(layoutHex)) return;
+            layoutHex = layoutHex.Trim();
+            var fg = GetForegroundWindow();
+            if (fg == IntPtr.Zero) { if (verbose) Console.WriteLine("[NativeInput][Layout] No foreground window for SetLayout."); }
+            var current = GetKeyboardLayout(0);
+            string currentHex = ((ulong)current).ToString("X16");
+            if (currentHex.EndsWith(layoutHex, StringComparison.OrdinalIgnoreCase))
+            {
+                if (verbose) Console.WriteLine($"[NativeInput][Layout] Already {layoutHex}");
+                return;
+            }
+            if (verbose) Console.WriteLine($"[NativeInput][Layout] Activating {layoutHex} (prev {currentHex})");
+            var hkl = LoadKeyboardLayout(layoutHex, KLF_ACTIVATE | KLF_SETFORPROCESS);
+            if (hkl == IntPtr.Zero)
+            {
+                Console.WriteLine($"[NativeInput][Layout][Warn] LoadKeyboardLayout failed for {layoutHex} (err={Marshal.GetLastWin32Error()})");
+                return;
+            }
+            var act = ActivateKeyboardLayout(hkl, KLF_ACTIVATE);
+            if (act == IntPtr.Zero)
+            {
+                Console.WriteLine($"[NativeInput][Layout][Warn] ActivateKeyboardLayout failed for {layoutHex} (err={Marshal.GetLastWin32Error()})");
+            }
+            else if (verbose)
+            {
+                Console.WriteLine($"[NativeInput][Layout] Activated {layoutHex}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[NativeInput][Layout][Error] SetLayout: {ex.Message}");
+        }
+    }
+
+    public static string? GetCurrentLayoutHex()
+    {
+        try
+        {
+            var kl = GetKeyboardLayout(0);
+            return ((ulong)kl).ToString("X16");
+        }
+        catch { return null; }
     }
 
     public static void MoveCursor(int x, int y)
@@ -199,5 +248,29 @@ internal static class NativeInput
         };
         Console.WriteLine($"[NativeInput] KeyEvent {(keyUp ? "UP" : "DOWN")} vk=0x{vk:X2}");
         SendInput(1, new[] { inp }, Marshal.SizeOf<INPUT>());
+    }
+
+    public static void KeyUnicode(char ch)
+    {
+        // Send a Unicode char irrespective of current layout.
+        var down = new INPUT
+        {
+            type = INPUT_KEYBOARD,
+            U = new InputUnion
+            {
+                ki = new KEYBDINPUT
+                {
+                    wVk = 0,
+                    wScan = ch,
+                    dwFlags = KEYEVENTF_UNICODE,
+                    time = 0,
+                    dwExtraInfo = IntPtr.Zero
+                }
+            }
+        };
+        var up = down;
+        up.U.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+        Console.WriteLine($"[NativeInput] KeyUnicode '{ch}' (U+{(int)ch:X4})");
+        SendInput(2, new[] { down, up }, Marshal.SizeOf<INPUT>());
     }
 }
