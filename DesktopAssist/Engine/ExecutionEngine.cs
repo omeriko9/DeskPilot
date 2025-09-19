@@ -244,6 +244,8 @@ public sealed class ExecutionEngine
     sbPrompt.AppendLine("Do not include explanations outside the JSON.");
     sbPrompt.AppendLine("All function names and parameter keys must be in English. Justifications may be concise.");
     sbPrompt.AppendLine("Reject inventing new function names; if an action can't be expressed with the allowed list, choose the closest valid primitive sequence.");
+    sbPrompt.AppendLine("Keyboard layout handling: BEFORE any step that writes or types shell commands / program names / file paths, ensure the English layout is active by inserting a hotkey step (function 'hotkey' keys ['win','space']) if you're not certain it's already English. BEFORE writing natural language text that appears to be in a different language (e.g., Hebrew), insert a hotkey ['win','space'] enough times to switch to that language, then proceed. Keep layout switch steps minimal—only add them when the layout likely needs to change. If consecutive write steps share the same language, do not repeat the hotkey.");
+    sbPrompt.AppendLine("Summarized rule: Use hotkey ['win','space'] to toggle keyboard layout to English for commands, and to the appropriate language for user-language text. Avoid redundant toggles.");
         sbPrompt.AppendLine("Example:\n{\n  \"steps\": [ { \"function\": \"press\", \"parameters\": { \"key\": \"win\" }, \"human_readable_justification\": \"Open start menu\" } ],\n  \"done\": null\n}");
         var combinedText = sbPrompt.ToString();
 
