@@ -1,0 +1,59 @@
+# .NET Core
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+
+# Visual Studio
+.vs/
+.vscode/
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Build artifacts
+*.exe
+*.dll
+*.pdb
+
+# NuGet
+packages/
+*.nupkg
+
+# Rider
+.idea/
+
+# macOS
+.DS_Store
+
+# Linux
+*~
+
+# Environment variables
+.env
+.env.local
+
+# Sensitive files
+settings.json
+
+# Screenshots or other media if not needed
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+
+# Backup files
+*.bak
+*.backup

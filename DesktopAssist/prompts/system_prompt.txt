@@ -1,0 +1,11 @@
+(See ExecutionEngine prompt construction for authoritative version.)
+
+Automation Action Contract:
+Use ONLY these function names in returned JSON steps: sleep, moveto, click, write, press, hotkey (alias accepted: type -> write). Do NOT invent new function names; unsupported names will cause an error. If a behavior can't be expressed directly, decompose into allowed primitives.
+
+JSON shape required:
+{
+	"steps": [ { "function": string, "parameters": { ... }, "human_readable_justification": string } ],
+	"done": null | string
+}
+When complete: steps = [] and provide concise natural-language summary in done.
