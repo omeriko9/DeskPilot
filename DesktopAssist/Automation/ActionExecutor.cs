@@ -123,7 +123,20 @@ public sealed class ActionExecutor
         {
             var resolved = new List<ushort>();
             Console.WriteLine($"[Action][Press] raw keys object type={keysObj?.GetType().Name}");
-            if (keysObj is IEnumerable<object> objList)
+            if (keysObj is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var item in je.EnumerateArray())
+                {
+                    var ks = item.ToString();
+                    if (TryMapVirtualKey(ks, out var vk))
+                    {
+                        resolved.Add(vk);
+                        Console.WriteLine($"[Action][Press] mapped '{ks}' -> 0x{vk:X2}");
+                    }
+                    else Console.WriteLine($"[Action][Press][Warn] unrecognized key '{ks}'");
+                }
+            }
+            else if (keysObj is IEnumerable<object> objList)
             {
                 foreach (var k in objList)
                 {
@@ -194,7 +207,16 @@ public sealed class ActionExecutor
         if (step.Parameters.TryGetValue("keys", out var keysObj))
         {
             sourceDescription = "keys-array";
-            if (keysObj is IEnumerable<object> objList)
+            if (keysObj is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var item in je.EnumerateArray())
+                {
+                    var ks = item.ToString();
+                    if (TryMapVirtualKey(ks, out var vk)) { collected.Add(vk); Console.WriteLine($"[Action][Hotkey] mapped '{ks}' -> 0x{vk:X2}"); }
+                    else Console.WriteLine($"[Action][Hotkey][Warn] unrecognized key '{ks}'");
+                }
+            }
+            else if (keysObj is IEnumerable<object> objList)
             {
                 foreach (var k in objList)
                 {
