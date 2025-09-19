@@ -15,6 +15,10 @@ public class AppForm : Form
 {
     private readonly Label _label;
     private readonly object _lock = new();
+    private readonly System.Windows.Forms.Timer _thinkingTimer;
+    private DateTime _thinkingStartUtc;
+    private bool _isThinking;
+    private string _thinkingBaseText = "Thinking..."; // canonical comparison baseline
 
     public AppForm()
     {
@@ -44,6 +48,12 @@ public class AppForm : Form
             AutoEllipsis = true
         };
         Controls.Add(_label);
+
+        _thinkingTimer = new System.Windows.Forms.Timer
+        {
+            Interval = 1000 // 1s updates
+        };
+        _thinkingTimer.Tick += (_, _) => UpdateThinkingElapsed();
     }
 
     public void UpdateStatus(string text)
@@ -58,9 +68,57 @@ public class AppForm : Form
             }
             lock (_lock)
             {
-                _label.Text = text;
+                bool nextThinking = text.StartsWith("Thinking", StringComparison.OrdinalIgnoreCase);
+                if (nextThinking)
+                {
+                    // Normalize base text to exactly what was passed (to allow future variants like "Thinking (retry)...")
+                    _thinkingBaseText = text;
+                    if (!_isThinking)
+                    {
+                        _isThinking = true;
+                        _thinkingStartUtc = DateTime.UtcNow;
+                        _thinkingTimer.Start();
+                    }
+                    // Immediate update (0s)
+                    _label.Text = _thinkingBaseText + "\n0s";
+                }
+                else
+                {
+                    if (_isThinking)
+                    {
+                        _thinkingTimer.Stop();
+                        _isThinking = false;
+                    }
+                    _label.Text = text;
+                }
             }
         }
         catch { /* non-fatal */ }
+    }
+
+    private void UpdateThinkingElapsed()
+    {
+        if (IsDisposed) return;
+        if (InvokeRequired)
+        {
+            try { BeginInvoke(new Action(UpdateThinkingElapsed)); } catch { }
+            return;
+        }
+        lock (_lock)
+        {
+            if (!_isThinking) return;
+            var secs = (int)Math.Floor((DateTime.UtcNow - _thinkingStartUtc).TotalSeconds);
+            _label.Text = _thinkingBaseText + "\n" + secs + "s";
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            try { _thinkingTimer?.Stop(); } catch { }
+            _thinkingTimer?.Dispose();
+        }
+        base.Dispose(disposing);
     }
 }

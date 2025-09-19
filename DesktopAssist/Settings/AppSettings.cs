@@ -32,6 +32,7 @@ public sealed record AppSettings
     public bool EnablePostCompletionVerification { get; init; } = false; // verify after completion via screenshot
     public int VerificationMaxAttempts { get; init; } = 2; // number of verification passes (including first) before giving up
     public bool ShowProgressOverlay { get; init; } = true; // show floating UI with thinking/step updates
+    public bool DebugConsole { get; init; } = true; // allocate/show console window (if detached) for diagnostics
 
     // Adaptive / performance tuning additions
     public int InitialStepMaxTokens { get; init; } = 700; // step 0 upper bound

@@ -41,15 +41,25 @@ internal static class Program
             uiReady.Wait();
         }
 
-        // If running as WinExe without an attached console, optionally allocate one for verbose network logging.
-        // This allows seeing the detailed HttpClient diagnostics emitted via Console.WriteLine.
-        if (settings.VerboseNetworkLogging && OperatingSystem.IsWindows())
+        // Console allocation / visibility based on DebugConsole setting.
+        if (OperatingSystem.IsWindows())
         {
             try
             {
-                if (GetConsoleWindow() == IntPtr.Zero)
+                var hasConsole = GetConsoleWindow() != IntPtr.Zero;
+                if (settings.DebugConsole)
                 {
-                    AllocConsole();
+                    // Ensure a console is available (helpful for diagnostics).
+                    if (!hasConsole) AllocConsole();
+                }
+                else
+                {
+                    // If a console exists but user disabled it, attempt to hide.
+                    if (hasConsole)
+                    {
+                        var hWnd = GetConsoleWindow();
+                        if (hWnd != IntPtr.Zero) ShowWindow(hWnd, SW_HIDE);
+                    }
                 }
             }
             catch { /* non-fatal */ }
@@ -118,5 +128,9 @@ internal static class Program
 
     [DllImport("kernel32.dll", SetLastError = false)]
     private static extern IntPtr GetConsoleWindow();
+
+    [DllImport("user32.dll", SetLastError = false)]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    private const int SW_HIDE = 0;
 #endregion
 }
