@@ -109,7 +109,9 @@ internal static class Initialization
                 OverlayForm = overlayForm,
                 UiThread = uiThread,
                 StatusCallback = null,
-                Client = new OpenAIClient(settings.BaseUrl, settings.ApiKey, settings.Model),
+                Client = settings.LlmProvider.Equals("remote", StringComparison.OrdinalIgnoreCase)
+                    ? new RemoteLLMClient(settings.RemoteUrl)
+                    : new OpenAIClient(settings.BaseUrl, settings.ApiKey, settings.Model),
                 Prompt = null
             };
         }
@@ -122,7 +124,9 @@ internal static class Initialization
             statusCb = s => { try { overlayForm.UpdateStatus(s); } catch { } };
         }
 
-    var client = new OpenAIClient(settings.BaseUrl, settings.ApiKey, settings.Model);
+        LLMClient client = settings.LlmProvider.Equals("remote", StringComparison.OrdinalIgnoreCase)
+            ? new RemoteLLMClient(settings.RemoteUrl)
+            : new OpenAIClient(settings.BaseUrl, settings.ApiKey, settings.Model);
         return new InitializationResult
         {
             Settings = settings,

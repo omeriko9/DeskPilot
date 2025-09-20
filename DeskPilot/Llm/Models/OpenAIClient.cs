@@ -9,102 +9,62 @@ using System.Threading.Tasks;
 
 namespace DesktopAssist.Llm.Models
 {
-    public sealed class OpenAIClient : LLMClient
+    public sealed class OpenAIClient : OpenAIClientBase
     {
-        private readonly HttpClient _http;
-        private readonly string _model;
         private readonly string _responsesUrl;
 
-        public event EventHandler<string>? Info;
-        public event EventHandler<string>? Error;
-
-        public OpenAIClient(string baseUrl, string apiKey, string model)
+        public OpenAIClient(string baseUrl, string apiKey, string model) : base(baseUrl, apiKey, model)
         {
-            _http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
-            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-            _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            _responsesUrl = $"{baseUrl}/responses";
-            _model = model;
+            _responsesUrl = $"{BaseUrl}/responses";
         }
 
 
-        public async Task<string?> CallAsync(string systemPrompt,
-        string userContextJson, string screenshotPngBase64, CancellationToken ct = default)
+    public override async Task<string?> GetAIResponseAsync(LlmRequest request, CancellationToken ct = default)
         {
-            var content = new
+            var content = new LlmInferenceRequest
             {
-                model = _model,
-                input = new object[]
+                Model = Model,
+                Input = new List<LlmRoleMessage>
                 {
-            new {
-                role = "system",
-                content = new object[]
-                {
-                    new { type = "input_text", text = systemPrompt }
-                }
-            },
-            new {
-                role = "user",
-                content = new object[]
-                {
-                    // 1) Plain request for maximal attention
-                    new { type = "input_text", text = "ORIGINAL_USER_REQUEST_UTF8:\n" +
-                        LlmCommon.ExtractOriginalUserRequest(userContextJson) },
-                    // 2) Base64 mirror, declared explicitly
-                    new { type = "input_text", text = "ORIGINAL_USER_REQUEST_BASE64:\n" +
-                        LlmCommon.ExtractOriginalUserRequestBase64(userContextJson) },
-                    // 3) The structured context (unchanged)
-                    new { type = "input_text", text = "USER_CONTEXT_JSON:\n" + userContextJson +
-                        "\n\nSTRICTLY FOLLOW THE SYSTEM RULES. Return ONLY the raw JSON object." },
-                    // 4) Screenshot
-                    new { type = "input_image", image_url = $"data:image/png;base64,{screenshotPngBase64}" }
-                }
-            }
+                    new LlmRoleMessage
+                    {
+                        Role = "system",
+                        Content = new List<object>
+                        {
+                            new LlmTextContentPart { Text = request.SystemPrompt }
+                        }
+                    },
+                    new LlmRoleMessage
+                    {
+                        Role = "user",
+                        Content = new List<object>
+                        {
+                            new LlmTextContentPart { Text = "ORIGINAL_USER_REQUEST_UTF8:\n" + request.OriginalUserRequest },
+                            new LlmTextContentPart { Text = "ORIGINAL_USER_REQUEST_BASE64:\n" + request.OriginalUserRequestBase64 },
+                            new LlmTextContentPart { Text = "USER_CONTEXT_JSON:\n" + request.UserContextJson + "\n\nSTRICTLY FOLLOW THE SYSTEM RULES. Return ONLY the raw JSON object." },
+                            new LlmImageContentPart { ImageUrl = $"data:image/png;base64,{request.ScreenshotPngBase64}" }
+                        }
+                    }
                 }
             };
 
             using var req = new HttpRequestMessage(HttpMethod.Post, _responsesUrl);
             req.Content = new StringContent(JsonSerializer.Serialize(content, JsonHelper.Options), Encoding.UTF8, "application/json");
 
-            using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            // Log serialized request for diagnostics (size + preview)
+            var serialized = JsonSerializer.Serialize(content, JsonHelper.Options);
+            RaiseInfo($"REQ bytes={serialized.Length}");
+            req.Content = new StringContent(serialized, Encoding.UTF8, "application/json");
+            using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {
-                Error?.Invoke(this, $"HTTP {(int)resp.StatusCode}: {body}");
+                RaiseError($"HTTP {(int)resp.StatusCode}: {body}");
                 return null;
             }
 
-            try
-            {
-                using var doc = JsonDocument.Parse(body);
-                if (doc.RootElement.TryGetProperty("output_text", out var ot) && ot.ValueKind == JsonValueKind.String)
-                    return ot.GetString();
-                if (doc.RootElement.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array && output.GetArrayLength() > 0)
-                {
-                    var first = output[0];
-                    if (first.TryGetProperty("content", out var cont) && cont.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var part in cont.EnumerateArray())
-                            if (part.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String) return t.GetString();
-                    }
-                }
-                if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0)
-                {
-                    var ch0 = choices[0];
-                    if (ch0.TryGetProperty("message", out var msg) && msg.TryGetProperty("content", out var mc))
-                    {
-                        if (mc.ValueKind == JsonValueKind.String) return mc.GetString();
-                        if (mc.ValueKind == JsonValueKind.Array)
-                        {
-                            foreach (var part in mc.EnumerateArray())
-                                if (part.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String) return t.GetString();
-                        }
-                    }
-                }
-            }
-            catch (Exception ex) { Error?.Invoke(this, "ParseResp: " + ex.Message); }
-
-            return body;
+            var extracted = OpenAIResponseParser.ExtractText(body, m => RaiseInfo(m));
+            return extracted ?? body;
         }
     }
 }

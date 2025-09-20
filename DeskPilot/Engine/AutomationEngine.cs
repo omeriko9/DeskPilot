@@ -53,7 +53,16 @@ public static class AutomationEngine
             Console.WriteLine($"[LLM] Turn {outerStep} -> sending screenshot ({screenshotKb} KB)");
             statusCb?.Invoke(AppForm.ThinkingBaseText);
 
-            var llmText = await client.CallAsync(systemPrompt, JsonSerializer.Serialize(userContext), screenshotPngB64);
+            var serializedContext = JsonSerializer.Serialize(userContext);
+            var request = new LlmRequest
+            {
+                SystemPrompt = systemPrompt,
+                OriginalUserRequest = prompt,
+                OriginalUserRequestBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(prompt)),
+                UserContextJson = serializedContext,
+                ScreenshotPngBase64 = screenshotPngB64
+            };
+            var llmText = await client.GetAIResponseAsync(request);
 
             File.AppendAllText(tmpFileName, $"System Prompt:{Environment.NewLine}{systemPrompt}{Environment.NewLine}User Context:{Environment.NewLine}{userContext}llmText:{Environment.NewLine}{llmText}{Environment.NewLine}", Encoding.UTF8);
 

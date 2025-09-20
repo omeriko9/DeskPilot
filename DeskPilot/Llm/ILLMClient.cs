@@ -28,6 +28,6 @@ namespace DesktopAssist.Llm
         /// <param name="screenshotPngBase64">Base64 encoded PNG screenshot.</param>
         /// <param name="ct">Cancellation token.</param>
         /// <returns>Model textual response (already flattened) or null on failure.</returns>
-        Task<string?> CallAsync(string systemPrompt, string userContextJson, string screenshotPngBase64, CancellationToken ct = default);
+    Task<string?> GetAIResponseAsync(LlmRequest request, CancellationToken ct = default);
     }
 }

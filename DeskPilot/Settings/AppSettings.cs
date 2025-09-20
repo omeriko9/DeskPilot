@@ -17,6 +17,8 @@ public sealed record AppSettings
     public int StepDelayMs { get; init; } = 500; // artificial delay between executed steps
     public bool ShowProgressOverlay { get; init; } = true; // show floating UI with thinking/step updates
     public bool DebugConsole { get; init; } = true; // allocate/show console window (if detached) for diagnostics
+    public string LlmProvider { get; init; } = "local"; // "local" (OpenAIClient) or "remote"
+    public string RemoteUrl { get; init; } = "http://localhost:5055/api/llm"; // endpoint for RemoteLLMClient
 
     [JsonIgnore]
     public string SettingsPath => Path.Combine(AppContext.BaseDirectory, SettingsFolder, SettingsFileName);
@@ -58,7 +60,10 @@ public sealed record AppSettings
             }
         }
 
-        settings = settings with { BaseUrl = NormalizeBaseUrl(settings.BaseUrl) };
+        if (settings.LlmProvider.Equals("local", StringComparison.OrdinalIgnoreCase))
+        {
+            settings = settings with { BaseUrl = NormalizeBaseUrl(settings.BaseUrl) };
+        }
         return settings;
     }
 
