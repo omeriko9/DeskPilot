@@ -13,6 +13,7 @@ using DesktopAssist.Screen;
 using DesktopAssist.Settings;
 using DesktopAssist.Automation.Input;
 using DesktopAssist.Util;
+using System.Runtime.InteropServices;
 
 namespace DesktopAssist.Engine;
 
@@ -33,6 +34,7 @@ public sealed class Executor
             case "paste": Paste(s.args); break;
             case "launch": Launch(s.args); break;
             case "mouse": Mouse(s.args); break;
+            case "diag_mouse": DiagMouse(s.args); break;
             case "focus_window":
                 {
                     string? title = null;
@@ -48,11 +50,64 @@ public sealed class Executor
         return Task.CompletedTask;
     }
 
+    private static void DiagMouse(JsonElement args)
+    {
+        try
+        {
+            Log.Info("DiagMouse", "begin");
+            bool remote = Native.GetSystemMetrics(Native.SM_REMOTESESSION) != 0;
+            Log.Info("DiagMouse", $"remote_session={remote}");
+            ScreenSnapshotInfo.RefreshVirtualMetrics();
+            Log.Info("DiagMouse", $"virtual=({ScreenSnapshotInfo.VirtualLeft},{ScreenSnapshotInfo.VirtualTop},{ScreenSnapshotInfo.VirtualWidth}x{ScreenSnapshotInfo.VirtualHeight}) lastImage={ScreenSnapshotInfo.LastImageWidth}x{ScreenSnapshotInfo.LastImageHeight}");
+
+            int baseX = args.TryGetProperty("x", out var xv) && xv.TryGetInt32(out var xi) ? xi : 200;
+            int baseY = args.TryGetProperty("y", out var yv) && yv.TryGetInt32(out var yi) ? yi : 200;
+            string mode = args.TryGetProperty("coord_type", out var ct) && ct.ValueKind == JsonValueKind.String ? ct.GetString()!.ToLowerInvariant() : "screen";
+
+            // Build a small square path
+            var pts = new List<(int x,int y)> { (baseX,baseY), (baseX+120,baseY), (baseX+120,baseY+120), (baseX,baseY+120), (baseX,baseY) };
+            int step = 0;
+            foreach (var (x,y) in pts)
+            {
+                int sx = x, sy = y;
+                if (mode != "screen")
+                {
+                    var mapped = ScreenSnapshotInfo.MapFromImagePx(x,y);
+                    sx = mapped.x; sy = mapped.y;
+                }
+                bool ok = Native.SetCursorPos(sx, sy);
+                int err = ok ? 0 : Marshal.GetLastWin32Error();
+                Thread.Sleep(30);
+                if (Native.GetCursorPos(out var cur))
+                {
+                    Log.Info("DiagMouse.step", $"i={step} target=({sx},{sy}) setOk={ok} err={err} actual=({cur.X},{cur.Y}) delta=({cur.X-sx},{cur.Y-sy})");
+                }
+                else
+                {
+                    Log.Warn("DiagMouse.step", $"i={step} GetCursorPos failed after setOk={ok} err={err}");
+                }
+                step++;
+            }
+            Log.Info("DiagMouse", "end");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("DiagMouse", ex, "exception");
+        }
+    }
+
     private static void Sleep(JsonElement args)
     {
-        int secs = args.TryGetProperty("secs", out var v) && v.TryGetInt32(out var i) ? i : 1;
-    Log.Info("Exec.sleep", $"secs={secs}");
-        Thread.Sleep(TimeSpan.FromSeconds(Math.Clamp(secs, 0, 5)));
+        double secs = 1.0;
+        if (args.TryGetProperty("secs", out var v))
+        {
+            if (v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d)) secs = d;
+            else if (v.TryGetInt32(out var i)) secs = i;
+        }
+        secs = Math.Clamp(secs, 0, 5);
+        Log.Info("Exec.sleep", $"secs={secs:0.###}");
+        int ms = (int)Math.Round(secs * 1000);
+        Thread.Sleep(ms);
     }
 
     private static void TypeText(JsonElement args)
@@ -68,9 +123,16 @@ public sealed class Executor
     {
         if (!args.TryGetProperty("text", out var t) || t.ValueKind != JsonValueKind.String) return;
         string text = t.GetString() ?? "";
-    Log.Info("Exec.paste", $"len={text.Length}");
-        ClipboardUtil.SetText(text);
+        bool restore = args.TryGetProperty("restore_clipboard", out var rv) && rv.ValueKind == JsonValueKind.True;
+        int delayMs = args.TryGetProperty("pre_paste_delay_ms", out var dv) && dv.TryGetInt32(out var dVal) ? Math.Clamp(dVal, 0, 500) : 60;
+        Log.Info("Exec.paste", $"len={text.Length} restore={restore} delayMs={delayMs}");
+        string? prev = ClipboardUtil.SetText(text, retries:5, retryDelayMs:55, getPrevious:restore);
+        Thread.Sleep(delayMs); // ensure target app observes clipboard update
         Input.KeyChord(new[] { VirtualKey.VK_CONTROL }, new[] { VirtualKey.VK_V });
+        if (restore) {
+            // restore after a short delay so paste occurs with new text
+            ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(120); ClipboardUtil.RestoreText(prev); });
+        }
     }
 
     private static void Press(JsonElement args)
@@ -126,7 +188,18 @@ public sealed class Executor
             return;
         }
 
-        var (sx, sy) = ScreenSnapshotInfo.MapFromImagePx(xImg, yImg);
+        string coordType = args.TryGetProperty("coord_type", out var ctVal) && ctVal.ValueKind == JsonValueKind.String ? ctVal.GetString()!.ToLowerInvariant() : "image";
+        int sx, sy;
+        if (coordType == "screen")
+        {
+            // Interpret provided x,y directly as screen pixels (debug path)
+            sx = xImg; sy = yImg;
+        }
+        else
+        {
+            var mapped = ScreenSnapshotInfo.MapFromImagePx(xImg, yImg);
+            sx = mapped.x; sy = mapped.y;
+        }
 
         string button = args.TryGetProperty("button", out var b) && b.ValueKind == JsonValueKind.String ? b.GetString()!.ToLowerInvariant() : "left";
         int clicks = args.TryGetProperty("clicks", out var cv) && cv.TryGetInt32(out var ci) ? Math.Clamp(ci, 1, 4) : 1;
@@ -134,20 +207,121 @@ public sealed class Executor
         string? action = args.TryGetProperty("action", out var av) && av.ValueKind == JsonValueKind.String ? av.GetString()!.ToLowerInvariant() : null;
         bool moveOnly = (action == "move");
 
-    Log.Info("Exec.mouse", $"img=({xImg},{yImg}) -> screen=({sx},{sy}) btn={button} clicks={clicks} moveOnly={moveOnly}");
+    Log.Info("Exec.mouse", $"mode={coordType} src=({xImg},{yImg}) -> screen=({sx},{sy}) btn={button} clicks={clicks} moveOnly={moveOnly}");
 
-        Native.SetCursorPos(sx, sy);
-        Thread.Sleep(25);
-        if (Native.GetCursorPos(out var p) && (Math.Abs(p.X - sx) > 2 || Math.Abs(p.Y - sy) > 2))
+        // Record pre-move position
+    Native.POINT before;
+    bool haveBefore = Native.GetCursorPos(out before);
+        if (haveBefore) Log.Info("Exec.mouse.pos.before", $"({before.X},{before.Y})");
+
+        bool setOk = Native.SetCursorPos(sx, sy);
+        if (!setOk)
         {
-            Log.Info("Exec.mouse.adjust", $"actual=({p.X},{p.Y}) -> retry ({sx},{sy})");
-            Native.SetCursorPos(sx, sy);
-            Thread.Sleep(25);
+            int err = Marshal.GetLastWin32Error();
+            Log.Warn("Exec.mouse.setcursor", $"SetCursorPos failed err={err} target=({sx},{sy})");
+        }
+        Thread.Sleep(20);
+        if (!Native.GetCursorPos(out var after1))
+        {
+            Log.Warn("Exec.mouse", "GetCursorPos failed after SetCursorPos");
+        }
+        else
+        {
+            int dx1 = after1.X - sx, dy1 = after1.Y - sy;
+            if (Math.Abs(dx1) > 2 || Math.Abs(dy1) > 2)
+            {
+                Log.Warn("Exec.mouse.pos.mismatch", $"afterSetCursorPos=({after1.X},{after1.Y}) target=({sx},{sy}) retrying");
+                // Retry once more
+                Native.SetCursorPos(sx, sy);
+                Thread.Sleep(25);
+                if (Native.GetCursorPos(out var after2))
+                {
+                    int dx2 = after2.X - sx, dy2 = after2.Y - sy;
+                    if (Math.Abs(dx2) > 2 || Math.Abs(dy2) > 2)
+                    {
+                        Log.Warn("Exec.mouse.pos.fallback", $"stillMismatch=({after2.X},{after2.Y}) -> attempting absolute SendInput move");
+                        // Fallback: absolute normalized move via SendInput
+                        TrySendInputAbsoluteMove(sx, sy);
+                        Thread.Sleep(30);
+                        if (Native.GetCursorPos(out var after3))
+                        {
+                            int dx3 = after3.X - sx, dy3 = after3.Y - sy;
+                            if (Math.Abs(dx3) > 2 || Math.Abs(dy3) > 2)
+                                Log.Warn("Exec.mouse.pos.fail", $"postFallback=({after3.X},{after3.Y}) still off target");
+                            else
+                                Log.Info("Exec.mouse.pos.fallback_ok", $"({after3.X},{after3.Y})");
+                        }
+                    }
+                    else
+                    {
+                        Log.Info("Exec.mouse.pos.retry_ok", $"({after2.X},{after2.Y})");
+                    }
+                }
+            }
+            else
+            {
+                Log.Info("Exec.mouse.pos.ok", $"({after1.X},{after1.Y})");
+            }
         }
 
         if (!moveOnly)
         {
-            for (int i = 0; i < clicks; i++) { Input.MouseClick(button); Thread.Sleep(interval); }
+            for (int i = 0; i < clicks; i++)
+            {
+                Input.MouseClick(button);
+                Thread.Sleep(interval);
+            }
+        }
+    }
+
+    // Fallback absolute move using SendInput normalized coords
+    private static void TrySendInputAbsoluteMove(int x, int y)
+    {
+        try
+        {
+            int vx = ScreenSnapshotInfo.VirtualLeft;
+            int vy = ScreenSnapshotInfo.VirtualTop;
+            int vw = ScreenSnapshotInfo.VirtualWidth;
+            int vh = ScreenSnapshotInfo.VirtualHeight;
+            if (vw <= 0 || vh <= 0)
+            {
+                Log.Warn("Exec.mouse.absmove", "No virtual metrics");
+                return;
+            }
+            // Normalize to 0..65535 range (per docs). Use virtual metrics to account for multi-monitor.
+            double nx = (double)(x - vx) * 65535.0 / Math.Max(1, vw - 1);
+            double ny = (double)(y - vy) * 65535.0 / Math.Max(1, vh - 1);
+            var inp = new INPUT
+            {
+                type = Native.INPUT_MOUSE,
+                U = new InputUnion
+                {
+                    mi = new MOUSEINPUT
+                    {
+                        dx = (int)Math.Round(nx),
+                        dy = (int)Math.Round(ny),
+                        mouseData = 0,
+                        dwFlags = Native.MOUSEEVENTF_MOVE | Native.MOUSEEVENTF_ABSOLUTE,
+                        time = 0,
+                        dwExtraInfo = IntPtr.Zero
+                    }
+                }
+            };
+            // Use reflection of internal Dispatch? Simpler: replicate minimal SendInput here.
+            uint sent = Native.SendInput(1, new[] { inp }, Marshal.SizeOf<INPUT>());
+            if (sent == 0)
+            {
+                int err = Marshal.GetLastWin32Error();
+                Log.Warn("Exec.mouse.absmove", $"SendInput failed err={err}");
+            }
+            else
+            {
+                Log.Info("Exec.mouse.absmove", $"sent target=({x},{y}) norm=({nx:0},{ny:0})");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Exec.mouse.absmove", ex, "exception");
         }
     }
 

@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using DesktopAssist.Util;
+using System.Net.Http;
 
 namespace DesktopAssist.Util;
 
@@ -99,8 +100,22 @@ internal static class Initialization
             catch { }
         }
 
-        string prompt = args.Length > 0 ? string.Join(" ", args) : ReadPromptFromConsole();
-        if (string.IsNullOrWhiteSpace(prompt))
+        bool isRemoteProvider = settings.LlmProvider.Equals("remote", StringComparison.OrdinalIgnoreCase);
+        string prompt;
+        if (args.Length > 0)
+        {
+            prompt = string.Join(" ", args);
+        }
+        else if (isRemoteProvider)
+        {
+            prompt = PollRemoteForPrompt(settings.RemoteUrl);
+        }
+        else
+        {
+            prompt = ReadPromptFromConsole();
+        }
+
+        if (string.IsNullOrWhiteSpace(prompt) && !isRemoteProvider)
         {
             Log.Warn("Init", "No prompt provided. Exiting.");
             return new InitializationResult
@@ -109,7 +124,7 @@ internal static class Initialization
                 OverlayForm = overlayForm,
                 UiThread = uiThread,
                 StatusCallback = null,
-                Client = settings.LlmProvider.Equals("remote", StringComparison.OrdinalIgnoreCase)
+                Client = isRemoteProvider
                     ? new RemoteLLMClient(settings.RemoteUrl)
                     : new OpenAIClient(settings.BaseUrl, settings.ApiKey, settings.Model),
                 Prompt = null
@@ -124,13 +139,11 @@ internal static class Initialization
             statusCb = s => { try { overlayForm.UpdateStatus(s); } catch { } };
         }
 
-        bool IsRemote = settings.LlmProvider.Equals("remote", StringComparison.OrdinalIgnoreCase);
-
-        LLMClient client = IsRemote
+        LLMClient client = isRemoteProvider
             ? new RemoteLLMClient(settings.RemoteUrl)
             : new OpenAIClient(settings.BaseUrl, settings.ApiKey, settings.Model);
 
-        Log.Info("Init", $"Started with {(IsRemote ? "RemoteLLMClient" : "OpenAIClient")} LLM Client");
+        Log.Info("Init", $"Started with {(isRemoteProvider ? "RemoteLLMClient" : "OpenAIClient")} LLM Client");
 
         return new InitializationResult
         {
@@ -141,6 +154,50 @@ internal static class Initialization
             Client = client,
             Prompt = prompt
         };
+    }
+
+    private static readonly HttpClient _http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+
+    internal static string PollRemoteForPrompt(string remoteBaseUrl)
+    {
+        var checkUrl = remoteBaseUrl.TrimEnd('/') + "/check";
+        Log.Info("RemotePoll", $"Polling remote for work at {checkUrl} every 5s...");
+        while (true)
+        {
+            try
+            {
+                var resp = _http.GetAsync(checkUrl).GetAwaiter().GetResult();
+                var body = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                if (!resp.IsSuccessStatusCode)
+                {
+                    Log.Warn("RemotePoll", $"HTTP {(int)resp.StatusCode}: {body}");
+                }
+                else
+                {
+                    using var doc = JsonDocument.Parse(body);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("has_work", out var hw) && hw.ValueKind == JsonValueKind.True || hw.ValueKind == JsonValueKind.False)
+                    {
+                        bool hasWork = hw.GetBoolean();
+                        if (hasWork && root.TryGetProperty("request", out var rq) && rq.ValueKind == JsonValueKind.String)
+                        {
+                            var reqStr = rq.GetString() ?? string.Empty;
+                            if (!string.IsNullOrWhiteSpace(reqStr))
+                            {
+                                var preview = reqStr.Length > 80 ? reqStr.Substring(0, 80) + "..." : reqStr;
+                                Log.Info("RemotePoll", $"Received work: {preview}");
+                                return reqStr;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                 Log.Warn("RemotePoll", $"Error polling: {ex.ToString()}");
+            }
+            Thread.Sleep(5000);
+        }
     }
 
     private static void MonitorConsoleWindow()

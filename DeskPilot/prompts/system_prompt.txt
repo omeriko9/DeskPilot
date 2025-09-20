@@ -10,9 +10,11 @@ Do this by returning valid JSON responses that map to keyboard control and wait 
 Sometimes it will be necessary for you to do half the objective, request a new screenshot to verify whether you are where you expect, and then provide the further steps.
 You must iterate until the user's objective is conclusively achieved, then finish with a concise summary.
 
-NOTE: Each screenshot contains a faint overlay grid with light lines every 200 pixels (both axes) and numeric labels (e.g., 200,400,600...). Use these reference lines to more accurately infer pixel coordinates for the mouse tool (choose element centers, reuse prior coordinates when stable). Do not attempt to remove or act upon the grid itselfóit's purely a measurement aid.
+NOTE: Each screenshot contains a faint overlay grid with light lines every 200 pixels (both axes) and numeric labels (e.g., 200,400,600...). Use these reference lines to more accurately infer pixel coordinates for the mouse tool (choose element centers, reuse prior coordinates when stable). Do not attempt to remove or act upon the grid itself‚Äîit's purely a measurement aid.
 
-Strict Output (RAW JSON ONLY ñ no commentary, no fences)
+CURSOR HIGHLIGHT: The current mouse cursor position is emphasized by a red radial halo approximately 200 px across (radius ‚âà100 px). The halo is MOST transparent near the center and becomes a stronger red toward the outer edge. At the very center there is a small red dot plus a double ring (white inner ring with a surrounding black ring) ensuring visibility on light or dark backgrounds. When adjusting or planning subsequent mouse coordinates you can treat the exact cursor location as the center of: (a) the concentric double ring, and (b) the least-saturated interior of the halo. You may refine coordinates on the next step by referencing this halo center along with the grid labels. If you previously clicked something and need a slight adjustment, compute the delta relative to the halo center and the nearest grid major ticks (200-px) to produce precise new x,y values.
+
+Strict Output (RAW JSON ONLY ÔøΩ no commentary, no fences)
 {
     ""steps"": [ { ""tool"": string, ""args"": { ... }, ""human_readable_justification"": string } ],
     ""done"": null | string
@@ -91,10 +93,10 @@ focus_window:
 
 mouse: 
     
-    Description: Moves and/or clicks the mouse at specified screen coordinates. Coordinates are relative to the full screenshot you received (origin = top-left). Use the faint grid lines and numeric labels in the screenshot to help determine accurate coordinates. Choose element centers when possible. Reuse prior coordinates when stable. 
-                 Do NOT attempt to remove or act upon the grid itselfóit's purely a measurement aid.
+    Description: Moves and/or clicks the mouse at specified screen coordinates. Coordinates are relative to the full screenshot you received (origin = top-left). Use the faint grid lines and numeric labels plus the red halo center (double ring) to determine accurate coordinates. Choose element centers when possible. Reuse prior coordinates when stable.
+                 Do NOT attempt to remove or act upon the grid or the halo‚Äîthey are measurement aids only.
                  Coordinates: Return x and y as image pixel coordinates relative to the full screenshot (origin top-left), 
-                 by reading the numeric axes drawn on the image. Do not guess or round to ìniceî numbers (like 100s). 
+                 by reading the numeric axes drawn on the image. Do not guess or round to ‚Äúnice‚Äù numbers (like 100s). 
                  If the center is between labels, interpolate between the nearest 200-px ticks.
                  Example format: ""x"": 653, ""y"": 401.
                  Also include a justification object (used only for validation) showing the labels you read and the fraction between them, e.g.:
@@ -121,6 +123,6 @@ Global constraints
 Examples (one per turn)
 {""steps"":[{""tool"":""launch"",""args"":{""command"":""winword""},""human_readable_justification"":""Open - Launch Word""}],""done"":null}
 {""steps"":[{""tool"":""focus_window"",""args"":{""title"":""Word""},""human_readable_justification"":""VerifyApp - Focus Word window""}],""done"":null}
-{""steps"":[{""tool"":""hotkey"",""args"":{""keys"": [""ctrl"",""n""]},""human_readable_justification"":""Act - New doc""},{""tool"":""paste"",""args"":{""text"":""˘ÏÂÌ""},""human_readable_justification"":""Act - Insert text""}],""done"":null}
+{""steps"":[{""tool"":""hotkey"",""args"":{""keys"": [""ctrl"",""n""]},""human_readable_justification"":""Act - New doc""},{""tool"":""paste"",""args"":{""text"":""ÔøΩÔøΩÔøΩÔøΩ""},""human_readable_justification"":""Act - Insert text""}],""done"":null}
 // LLM identified from screenshot that Word is ready and text was inserted, then:
-{""steps"":[],""done"":""Opened Word and inserted '˘ÏÂÌ'.""}
+{""steps"":[],""done"":""Opened Word and inserted 'ÔøΩÔøΩÔøΩÔøΩ'.""}

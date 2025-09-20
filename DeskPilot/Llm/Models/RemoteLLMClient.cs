@@ -41,6 +41,9 @@ namespace DesktopAssist.Llm.Models
                 var json = JsonSerializer.Serialize(payload, JsonHelper.Options);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 Info?.Invoke(this, $"POST {_endpoint} ({json.Length} bytes)");
+
+                //Console.WriteLine(json); // For diagnostics
+
                 using var resp = await _http.PostAsync(_endpoint, content, ct);
                 var body = await resp.Content.ReadAsStringAsync(ct);
                 if (!resp.IsSuccessStatusCode)

@@ -144,7 +144,7 @@ public static class Native
                                                                IntPtr hdcSrc, int nXSrc, int nYSrc, int dwRop);
     [DllImport("user32.dll")] internal static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
 
-    [DllImport("user32.dll")] internal static extern bool SetCursorPos(int X, int Y);
+    [DllImport("user32.dll", SetLastError = true)] internal static extern bool SetCursorPos(int X, int Y);
 
     internal const int SRCCOPY = 0x00CC0020;
 
@@ -153,6 +153,7 @@ public static class Native
     internal const int SM_YVIRTUALSCREEN = 77;
     internal const int SM_CXVIRTUALSCREEN = 78;
     internal const int SM_CYVIRTUALSCREEN = 79;
+    internal const int SM_REMOTESESSION = 0x1000; // 4096
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
@@ -354,7 +355,12 @@ internal static class Input
 
     public static void MouseMoveAbsolute(int x, int y)
     {
-        Native.SetCursorPos(x, y); // pixel-accurate, honors DPI
+        // Primary attempt: SetCursorPos (pixel-accurate, honors DPI)
+        if (!Native.SetCursorPos(x, y))
+        {
+            int err = Marshal.GetLastWin32Error();
+            Console.WriteLine($"[MouseMove][Warn] SetCursorPos failed err={err} target=({x},{y}) attempting SendInput fallback");
+        }
     }
 
 
@@ -370,34 +376,65 @@ internal static class Input
         }
         var downInp = new INPUT { type = Native.INPUT_MOUSE, U = new InputUnion { mi = new MOUSEINPUT { dx = 0, dy = 0, mouseData = 0, dwFlags = down, time = 0, dwExtraInfo = IntPtr.Zero } } };
         var upInp = new INPUT { type = Native.INPUT_MOUSE, U = new InputUnion { mi = new MOUSEINPUT { dx = 0, dy = 0, mouseData = 0, dwFlags = up, time = 0, dwExtraInfo = IntPtr.Zero } } };
+        uint sentBefore = 0; // for potential future aggregation
         Dispatch(new[] { downInp, upInp });
+        if (!Native.GetCursorPos(out var p))
+        {
+            Console.WriteLine("[MouseClick][Warn] GetCursorPos failed after click");
+        }
     }
 }
 
 internal static class ClipboardUtil
 {
-    public static void SetText(string text)
+    /// <summary>
+    /// Robustly sets clipboard text (Unicode) on an STA thread with retries.
+    /// Optionally returns previous text so caller may restore if desired.
+    /// </summary>
+    public static string? SetText(string text, int retries = 4, int retryDelayMs = 40, bool getPrevious = true)
     {
+        text ??= string.Empty;
+        string? previous = null;
+
         var thread = new Thread(() =>
         {
-            try
-            {
-                Clipboard.SetText(text);
-            }
-            catch
+            for (int attempt = 0; attempt < retries; attempt++)
             {
                 try
                 {
-                    Clipboard.Clear();
-                    Clipboard.SetText(text);
+                    if (getPrevious && attempt == 0)
+                    {
+                        try { if (Clipboard.ContainsText()) previous = Clipboard.GetText(); } catch { /* ignore */ }
+                    }
+                    Clipboard.SetText(text, TextDataFormat.UnicodeText);
+                    return; // success
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine("[Clipboard][Error] " + ex.Message);
+                    if (attempt == retries - 1)
+                    {
+                        Console.WriteLine($"[Clipboard][Error] failed attempts={retries} msg={ex.Message}");
+                    }
+                    Thread.Sleep(retryDelayMs);
                 }
             }
         });
         thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
+        thread.Start();
+        thread.Join();
+        return previous;
+    }
+
+    public static void RestoreText(string? previous)
+    {
+        if (previous == null) return;
+        var thread = new Thread(() =>
+        {
+            try { Clipboard.SetText(previous, TextDataFormat.UnicodeText); } catch { /* ignore */ }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
         thread.Start();
         thread.Join();
     }

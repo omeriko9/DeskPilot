@@ -85,35 +85,79 @@ namespace DesktopAssist.Screen
             using var bmp = new Bitmap(msIn);
             using var g = Graphics.FromImage(bmp);
 
-            // get cursor pos in SCREEN px, map to IMAGE px
+            // Get cursor position (screen px) and map to image px
             if (!Native.GetCursorPos(out var p)) return png;
-            // map screen→image: inverse of MapFromImagePx
-            // Our image is the virtual desktop [left,top]..[left+width,top+height]
             int vx = ScreenSnapshotInfo.VirtualLeft;
             int vy = ScreenSnapshotInfo.VirtualTop;
             int vw = ScreenSnapshotInfo.VirtualWidth;
             int vh = ScreenSnapshotInfo.VirtualHeight;
             if (vw <= 0 || vh <= 0) return png;
 
-            double ix = (p.X - vx) * (double)w / vw;
-            double iy = (p.Y - vy) * (double)h / vh;
-            int cx = (int)Math.Round(ix);
-            int cy = (int)Math.Round(iy);
+            int cx = (int)Math.Round((p.X - vx) * (double)w / vw);
+            int cy = (int)Math.Round((p.Y - vy) * (double)h / vh);
 
-            // draw crosshair + coordinates text
-            using var pen = new Pen(Color.FromArgb(240, 255, 64, 64), 2);
-            int len = 14;
-            g.DrawLine(pen, Math.Max(0, cx - len), cy, Math.Min(w - 1, cx + len), cy);
-            g.DrawLine(pen, cx, Math.Max(0, cy - len), cx, Math.Min(h - 1, cy + len));
+            // Safety clamp
+            if (cx < 0 || cy < 0 || cx >= w || cy >= h)
+            {
+                using var msOutEarly = new MemoryStream();
+                bmp.Save(msOutEarly, System.Drawing.Imaging.ImageFormat.Png);
+                return msOutEarly.ToArray();
+            }
 
-            using var font = new Font("Consolas", 24, FontStyle.Bold, GraphicsUnit.Pixel);
-            using var bg = new SolidBrush(Color.FromArgb(170, 0, 0, 0));
-            using var fg = new SolidBrush(Color.White);
-            var label = $"cursor=({cx},{cy})";
-            var size = g.MeasureString(label, font);
-            var rect = new RectangleF(8, 8, size.Width + 12, size.Height + 8);
-            g.FillRectangle(bg, rect);
-            g.DrawString(label, font, fg, rect.X + 6, rect.Y + 4);
+            // Parameters for halo
+            const int radius = 100; // outer radius in pixels
+            const int innerRadius = 12; // near cursor mostly transparent
+            Rectangle bounds = new Rectangle(Math.Max(0, cx - radius), Math.Max(0, cy - radius),
+                                             Math.Min(radius * 2, w - (cx - radius)),
+                                             Math.Min(radius * 2, h - (cy - radius)));
+
+            // Lock bitmap data for pixel manipulation (ARGB) for smooth radial alpha gradient
+            // We'll create a temporary overlay bitmap with alpha then composite it.
+            using (var overlay = new Bitmap(bounds.Width, bounds.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            {
+                for (int oy = 0; oy < bounds.Height; oy++)
+                {
+                    int py = bounds.Top + oy;
+                    for (int ox = 0; ox < bounds.Width; ox++)
+                    {
+                        int px = bounds.Left + ox;
+                        double dx = px - cx;
+                        double dy = py - cy;
+                        double dist = Math.Sqrt(dx * dx + dy * dy);
+                        if (dist > radius) continue; // leave transparent
+
+                        // Compute alpha: 0 near innerRadius, rising to strong near outer edge.
+                        double t = Math.Clamp((dist - innerRadius) / (radius - innerRadius), 0, 1);
+                        // Non-linear ease to concentrate color at edge
+                        t = Math.Pow(t, 0.35); // accelerate early to emphasize edge
+                        int alpha = (int)(t * 180); // cap alpha (max ~70%)
+
+                        // Color: deeper red as distance increases, slight darkening
+                        int r = 255;
+                        int gComp = (int)(40 + 90 * (1 - t)); // from brighter center to darker edge
+                        int bComp = (int)(40 + 60 * (1 - t));
+
+                        overlay.SetPixel(ox, oy, Color.FromArgb(alpha, r, gComp, bComp));
+                    }
+                }
+
+                g.DrawImageUnscaled(overlay, bounds.Location);
+            }
+
+            // Draw double ring (white inner, black outer) to ensure visibility on any background
+            using (var penOuter = new Pen(Color.FromArgb(255, 0, 0, 0), 5))
+            using (var penInner = new Pen(Color.FromArgb(255, 255, 255, 255), 3))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.DrawEllipse(penOuter, cx - innerRadius - 4, cy - innerRadius - 4, (innerRadius + 4) * 2, (innerRadius + 4) * 2);
+                g.DrawEllipse(penInner, cx - innerRadius - 2, cy - innerRadius - 2, (innerRadius + 2) * 2, (innerRadius + 2) * 2);
+            }
+
+            // Optional: small dot at exact cursor center for precision.
+            using (var centerBrush = new SolidBrush(Color.FromArgb(255, 255, 64, 64)))
+            {
+                g.FillEllipse(centerBrush, cx - 2, cy - 2, 4, 4);
+            }
 
             using var msOut = new MemoryStream();
             bmp.Save(msOut, System.Drawing.Imaging.ImageFormat.Png);

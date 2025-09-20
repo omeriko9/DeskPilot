@@ -56,6 +56,23 @@ public class AppForm : Form
             Interval = 1000 // 1s updates
         };
         _thinkingTimer.Tick += (_, _) => UpdateThinkingElapsed();
+
+        KeyPreview = true;
+        this.KeyDown += AppForm_KeyDown;
+    }
+
+    private void AppForm_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Control && e.KeyCode == Keys.R)
+        {
+            try
+            {
+                var rf = new ReplayForm();
+                rf.Show();
+            }
+            catch { }
+            e.Handled = true;
+        }
     }
 
     public void UpdateStatus(string text)

@@ -62,9 +62,18 @@ public static class AutomationEngine
                 UserContextJson = serializedContext,
                 ScreenshotPngBase64 = screenshotPngB64
             };
+
+            // Log outgoing request to console for diagnostics 
+            var previewContext = serializedContext;
+
+            Console.WriteLine($"Serialized Context: {serializedContext}");
+            Console.WriteLine(); 
+
             var llmText = await client.GetAIResponseAsync(request);
 
             File.AppendAllText(tmpFileName, $"System Prompt:{Environment.NewLine}{systemPrompt}{Environment.NewLine}User Context:{Environment.NewLine}{userContext}llmText:{Environment.NewLine}{llmText}{Environment.NewLine}", Encoding.UTF8);
+            File.AppendAllText("steps.txt", $"[{DateTime.Now}]: {llmText}");
+
 
             if (string.IsNullOrWhiteSpace(llmText))
             {
