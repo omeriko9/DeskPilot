@@ -9,7 +9,7 @@ namespace DesktopAssist;
 ///  - "Thinking..." while waiting for LLM response
 ///  - Individual step function & justification while executing
 /// Enabled via AppSettings.ShowProgressOverlay (default true).
-/// Sits at top-left quarter of the primary screen.
+/// Sits at top-right quarter of the primary screen.
 /// </summary>
 public class AppForm : Form
 {
@@ -24,7 +24,7 @@ public class AppForm : Form
     public AppForm()
     {
         Text = "DesktopAssist Progress";
-        FormBorderStyle = FormBorderStyle.FixedToolWindow;
+        //FormBorderStyle = FormBorderStyle.FixedToolWindow;
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
         TopMost = true;
@@ -35,7 +35,7 @@ public class AppForm : Form
     var screen = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
         Width = Math.Max(400, screen.Width / 4);
         Height = Math.Max(250, screen.Height / 4);
-        Left = 0;
+        Left = screen.Width - Width;
         Top = 0;
 
         _label = new Label
