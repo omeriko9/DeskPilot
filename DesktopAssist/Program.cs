@@ -199,7 +199,7 @@ internal static class Program
         {
             if (settings.ShowProgressOverlay && overlayForm != null)
             {
-                overlayForm.UpdateStatus("ñééîúé");
+                overlayForm.UpdateStatus("ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
 
                 try
                 {
