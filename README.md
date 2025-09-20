@@ -1,6 +1,6 @@
-# DesktopAssist
+# DeskPilot
 
-DesktopAssist lets you tell an AI what you want done on your Windows machine ("Open Notepad and write a to‑do list", "Rename those screenshots and zip them", "Search settings for dark mode") and then it visually looks at your screen, plans a few precise steps, and carries them out automatically—moving the mouse, pressing keys, launching apps—until the goal is finished or a safety step limit is reached.
+DeskPilot lets you tell an AI what you want done on your Windows machine ("Open Notepad and write a to‑do list", "Rename those screenshots and zip them", "Search settings for dark mode") and then it visually looks at your screen, plans a few precise steps, and carries them out automatically—moving the mouse, pressing keys, launching apps—until the goal is finished or a safety step limit is reached.
 
 ---
 ## Key Features
@@ -69,13 +69,13 @@ Requirements: .NET 8.0 (Windows only — uses Win32 APIs). Clone repo and build 
 
 ```powershell
 # Build
-dotnet build DesktopAssist.sln -c Debug
+dotnet build DeskPilot.sln -c Debug
 
 # Run with interactive prompt acquisition
-dotnet run --project DesktopAssist/DesktopAssist.csproj
+dotnet run --project DeskPilot/DeskPilot.csproj
 
 # Or pass objective inline
-dotnet run --project DesktopAssist/DesktopAssist.csproj -- "Open notepad and type hello"
+dotnet run --project DeskPilot/DeskPilot.csproj -- "Open notepad and type hello"
 ```
 
 The first launch creates `settings.json` beside the executable if missing.
@@ -83,9 +83,9 @@ The first launch creates `settings.json` beside the executable if missing.
 ### Distribution Binary
 Publish a single-file trimmed build:
 ```powershell
-dotnet publish DesktopAssist/DesktopAssist.csproj -c Release -r win-x64 -p:PublishSingleFile=true --self-contained false
+dotnet publish DeskPilot.csproj -c Release -r win-x64 -p:PublishSingleFile=true --self-contained false
 ```
-Artifacts appear under `DesktopAssist/bin/Release/net8.0-windows/win-x64/publish`.
+Artifacts appear under `DeskPilot/bin/Release/net8.0-windows/win-x64/publish`.
 
 ---
 ## Configuration (`settings.json`)
