@@ -1,14 +1,17 @@
 using System;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace DesktopAssist.Util;
 
-public static class JsonExtraction
+internal static class JsonHelper
 {
-    public static string? ExtractJsonBlock(string input)
+    public static readonly JsonSerializerOptions Options = new JsonSerializerOptions
     {
-        int first = input.IndexOf('{');
-        int last = input.LastIndexOf('}');
-        if (first < 0 || last < first) return null;
-        return input.Substring(first, last - first + 1);
-    }
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = false
+    };
 }

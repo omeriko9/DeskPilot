@@ -1,17 +1,22 @@
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace DesktopAssist.Llm.Models;
 
-public sealed class InstructionResponse
+public sealed class StepsResponse
 {
-    [JsonPropertyName("steps")] public List<InstructionStep> Steps { get; init; } = new();
-    [JsonPropertyName("done")] public string? Done { get; init; }
+    [JsonPropertyName("steps")]
+    public List<Step>? Steps { get; set; }
+
+    // While working: false|null; When complete: string summary
+    [JsonPropertyName("done")]
+    public object? Done { get; set; }
 }
 
-public sealed class InstructionStep
+public sealed class Step
 {
-    [JsonPropertyName("function")] public string Function { get; init; } = string.Empty;
-    [JsonPropertyName("parameters")] public Dictionary<string, object>? Parameters { get; init; }
-    [JsonPropertyName("human_readable_justification")] public string? Justification { get; init; }
+    public string tool { get; set; } = "";
+    public JsonElement args { get; set; } // arbitrary object
+    public string human_readable_justification { get; set; } = "";
 }

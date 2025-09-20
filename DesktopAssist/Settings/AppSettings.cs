@@ -50,6 +50,8 @@ public sealed record AppSettings
     [JsonIgnore]
     public string SettingsPath => Path.Combine(AppContext.BaseDirectory, SettingsFolder, SettingsFileName);
 
+    public object KeyboardOnlyMode { get; init; } = false;
+
     public static AppSettings Load()
     {
         var folder = Path.Combine(AppContext.BaseDirectory, SettingsFolder);

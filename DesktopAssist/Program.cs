@@ -1,12 +1,18 @@
+using DesktopAssist.Automation.Input;
+using DesktopAssist.Engine;
+using DesktopAssist.Llm;
+using DesktopAssist.Llm.Models;
+using DesktopAssist.Screen;
+using DesktopAssist.Settings;
 using System;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using DesktopAssist.Engine;
-using DesktopAssist.Settings;
-using System.Runtime.InteropServices;
 
 namespace DesktopAssist;
 
@@ -19,6 +25,7 @@ internal static class Program
         AppForm? overlayForm = null;
         Thread? uiThread = null;
         var uiReady = new ManualResetEventSlim(false);
+       
         if (settings.ShowProgressOverlay)
         {
             uiThread = new Thread(() =>
@@ -41,6 +48,10 @@ internal static class Program
             uiReady.Wait();
         }
 
+
+        try { Native.SetProcessDpiAwarenessContext(Native.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2); }
+        catch { /* ignore; best effort */ }
+
         // Console allocation / visibility based on DebugConsole setting.
         if (OperatingSystem.IsWindows())
         {
@@ -51,6 +62,9 @@ internal static class Program
                 {
                     // Ensure a console is available (helpful for diagnostics).
                     if (!hasConsole) AllocConsole();
+
+                    Console.OutputEncoding = Encoding.UTF8;
+                    Console.InputEncoding = Encoding.UTF8;
                 }
                 else
                 {
@@ -80,22 +94,113 @@ internal static class Program
                 try { overlayForm.UpdateStatus(s); } catch { }
             };
         }
-        var engine = new ExecutionEngine(settings, statusCb);
-        using var cts = new CancellationTokenSource();
 
-        Console.CancelKeyPress += (_, e) => {
-            e.Cancel = true;
-            cts.Cancel();
-            Console.WriteLine("Cancellation requested...");
-        };
+        var client = new OpenAIClient(settings.BaseUrl, settings.ApiKey, settings.Model);
+
+        int outerStep = 0;
+        string history = "";
+
+        var tmpFileName = @"output.txt";
+
+        while (outerStep < settings.MaxSteps)
+        {
+            outerStep++;
+
+            // Capture CURRENT screenshot (single display primary)
+            var (screenshotPngB64, size) = Screenshot.CapturePrimaryPngBase64();
+
+            // Compose LLM call
+            var systemPrompt = File.ReadAllText("prompts/system_prompt.txt");
+            var userContext = new
+            {
+                original_user_request = prompt,
+                original_user_request_b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(prompt)),
+                step_num = outerStep - 1,
+                actions_history = history,
+                keyboard_only_hint = settings.KeyboardOnlyMode,
+                image_space = new { width = size.Width, height = size.Height },
+                virtual_screen = new
+                {
+                    left = ScreenSnapshotInfo.VirtualLeft,
+                    top = ScreenSnapshotInfo.VirtualTop,
+                    width = ScreenSnapshotInfo.VirtualWidth,
+                    height = ScreenSnapshotInfo.VirtualHeight
+                }
+            };
+
+            Console.WriteLine($"[LLM] Turn {outerStep} -> sending screenshot ({
+                //screenshotPngBase64SizeKb(screenshotPngB64)
+                (int)(Math.Round(Screenshot.CapturePrimaryPngBase64().b64.Length * 0.75) / 1024.0)
+                } KB)");
+            var llmText = await client.CallAsync(systemPrompt,
+                JsonSerializer.Serialize(userContext),
+                screenshotPngB64);
+
+            File.AppendAllText(tmpFileName, $"System Prompt:{Environment.NewLine}" +
+                $"{systemPrompt}{Environment.NewLine}User Context:{Environment.NewLine}{userContext}" +
+                $"llmText:{Environment.NewLine}{llmText}{Environment.NewLine}", Encoding.UTF8);
+
+
+            if (string.IsNullOrWhiteSpace(llmText))
+            {
+                Console.WriteLine("[LLM][Error] Empty response text.");
+                break;
+            }
+
+            // LLM is instructed to return EXACT ONE JSON object. Parse strictly.
+            if (!InstructionParser.TryParseResponse(llmText, out StepsResponse plan, out string parseErr))
+            {
+                Console.WriteLine($"[Parse][Error] {parseErr}");
+                // Ask the model to self-correct next turn by continuing loop (it sees previous invalidity via prompt rule 11).
+                continue;
+            }
+
+            if (plan.Steps == null) plan.Steps = new List<Step>();
+
+            if (plan.Steps.Count > settings.MaxSteps)
+            {
+                Console.WriteLine($"[Guard] steps > {settings.MaxSteps}, truncating.");
+                plan.Steps = plan.Steps.GetRange(0, settings.MaxSteps);
+            }
+
+            // Finish condition: no steps and done is a non-empty string
+            if (plan.Steps.Count == 0 && !String.IsNullOrEmpty(plan.Done?.ToString()))
+            {
+                Console.WriteLine($"[Done] {plan.Done.ToString()}");
+                break;
+            }
+
+            // Execute steps
+
+            Console.WriteLine($"Received {plan.Steps.Count} step(s):");
+
+            foreach (var step in plan.Steps)
+            {
+                try
+                {
+                    Console.WriteLine($"[Do] {step.tool} :: {step.human_readable_justification}");
+                    await Executor.ExecuteAsync(step);
+                    history += $"Tool: {step.tool}, args: {step.args}{Environment.NewLine}";
+
+                    Thread.Sleep(100);
+
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Exec][Error] {ex.Message}");
+                    // Continue; LLM should recover next turn
+                }
+                Thread.Sleep(settings.StepDelayMs);
+            }
+        }
+
 
         try
         {
-            var result = await engine.RunAsync(prompt, cts.Token).ConfigureAwait(false);
             if (settings.ShowProgressOverlay && overlayForm != null)
             {
-                overlayForm.UpdateStatus("Done");
-                try { await Task.Delay(1200, CancellationToken.None); } catch { }
+                overlayForm.UpdateStatus("סיימתי");
+
                 try
                 {
                     overlayForm.Invoke(() => overlayForm.Close());
@@ -106,7 +211,7 @@ internal static class Program
                     uiThread.Join(TimeSpan.FromSeconds(2));
                 }
             }
-            Console.WriteLine($"Result: {result}");
+            
             return 0;
         }
         catch (Exception ex)
@@ -114,7 +219,10 @@ internal static class Program
             Console.WriteLine($"Fatal error: {ex}");
             return 2;
         }
+    
     }
+
+            
 
     private static string ReadPromptFromConsole()
     {

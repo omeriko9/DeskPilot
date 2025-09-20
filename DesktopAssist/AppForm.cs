@@ -18,7 +18,7 @@ public class AppForm : Form
     private readonly System.Windows.Forms.Timer _thinkingTimer;
     private DateTime _thinkingStartUtc;
     private bool _isThinking;
-    private string _thinkingBaseText = "Thinking..."; // canonical comparison baseline
+    private string _thinkingBaseText = "חושב..."; // canonical comparison baseline
 
     public AppForm()
     {
@@ -68,7 +68,7 @@ public class AppForm : Form
             }
             lock (_lock)
             {
-                bool nextThinking = text.StartsWith("Thinking", StringComparison.OrdinalIgnoreCase);
+                bool nextThinking = text.StartsWith(_thinkingBaseText, StringComparison.OrdinalIgnoreCase);
                 if (nextThinking)
                 {
                     // Normalize base text to exactly what was passed (to allow future variants like "Thinking (retry)...")

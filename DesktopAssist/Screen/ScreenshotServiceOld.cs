@@ -6,7 +6,7 @@ using System.IO;
 
 namespace DesktopAssist.Screen;
 
-public sealed class ScreenshotService
+public sealed class ScreenshotServiceOld
 {
     private DateTime _lastCaptureUtc = DateTime.MinValue;
     private string _lastBase64 = string.Empty;
