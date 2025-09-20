@@ -1,6 +1,6 @@
 # DesktopAssist
 
-DesktopAssist is a Windows desktop automation loop powered by a multimodal LLM (text + annotated screenshot). It iteratively observes the full virtual desktop, plans a small batch of structured steps (JSON), and executes them via low‑level native input until the user objective is reached or a step budget is exhausted.
+DesktopAssist lets you tell an AI what you want done on your Windows machine ("Open Notepad and write a to‑do list", "Rename those screenshots and zip them", "Search settings for dark mode") and then it visually looks at your screen, plans a few precise steps, and carries them out automatically—moving the mouse, pressing keys, launching apps—until the goal is finished or a safety step limit is reached.
 
 ---
 ## Key Features
