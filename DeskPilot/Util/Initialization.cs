@@ -124,9 +124,14 @@ internal static class Initialization
             statusCb = s => { try { overlayForm.UpdateStatus(s); } catch { } };
         }
 
-        LLMClient client = settings.LlmProvider.Equals("remote", StringComparison.OrdinalIgnoreCase)
+        bool IsRemote = settings.LlmProvider.Equals("remote", StringComparison.OrdinalIgnoreCase);
+
+        LLMClient client = IsRemote
             ? new RemoteLLMClient(settings.RemoteUrl)
             : new OpenAIClient(settings.BaseUrl, settings.ApiKey, settings.Model);
+
+        Log.Info("Init", $"Started with {(IsRemote ? "RemoteLLMClient" : "OpenAIClient")} LLM Client");
+
         return new InitializationResult
         {
             Settings = settings,

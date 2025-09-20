@@ -17,8 +17,8 @@ public sealed record AppSettings
     public int StepDelayMs { get; init; } = 500; // artificial delay between executed steps
     public bool ShowProgressOverlay { get; init; } = true; // show floating UI with thinking/step updates
     public bool DebugConsole { get; init; } = true; // allocate/show console window (if detached) for diagnostics
-    public string LlmProvider { get; init; } = "local"; // "local" (OpenAIClient) or "remote"
-    public string RemoteUrl { get; init; } = "http://localhost:5055/api/llm"; // endpoint for RemoteLLMClient
+    public string LlmProvider { get; init; } = "remote"; // default switched to remote proxy (python)
+    public string RemoteUrl { get; init; } = "http://localhost:8009/"; // python FastAPI root endpoint
 
     [JsonIgnore]
     public string SettingsPath => Path.Combine(AppContext.BaseDirectory, SettingsFolder, SettingsFileName);

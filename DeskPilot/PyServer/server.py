@@ -74,15 +74,10 @@ async def call_openai(payload: dict) -> dict:
         return resp.json()
 
 @app.post("/")
-async def root(request: IncomingRequest, req: Request):
-    client_ip = req.client.host if req.client else "unknown"
-    request_size = len(str(request.dict()))  # approximate size
-    logger.info(f"Client {client_ip} connected, request size: {request_size} bytes")
+async def root(request: IncomingRequest):
     payload = build_openai_payload(request)
     try:
         openai_json = await call_openai(payload)
-        response_size = len(str(openai_json))
-        logger.info(f"Sending response to {client_ip}, size: {response_size} bytes")
     except HTTPException:
         raise
     except Exception as ex:
@@ -94,13 +89,9 @@ async def root(request: IncomingRequest, req: Request):
 
 # Optional simple health endpoint
 @app.get("/health")
-async def health(req: Request):
-    client_ip = req.client.host if req.client else "unknown"
-    logger.info(f"Health check from {client_ip}")
+async def health():
     return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", PORT_NUMBER))
-    logger.info(f"Starting server on port {port}")
-    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("server:app", host="0.0.0.0", port=int(os.getenv("PORT", PORT_NUMBER)), reload=False)
