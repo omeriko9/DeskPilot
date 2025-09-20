@@ -28,6 +28,11 @@ internal class InitializationResult
 
 internal static class Initialization
 {
+    // Keep references to prevent garbage collection
+    private static Native.ConsoleCtrlHandlerRoutine? _consoleCtrlHandler;
+    private static Thread? _consoleMonitorThread;
+    private static bool _consoleClosed = false;
+
     // Packs initialization concerns (settings, UI thread, console config, prompt acquisition, LLM client)
     internal static InitializationResult Initialize(string[] args)
     {
@@ -71,6 +76,18 @@ internal static class Initialization
                     if (!hasConsole) Native.AllocConsole();
                     Console.OutputEncoding = Encoding.UTF8;
                     Console.InputEncoding = Encoding.UTF8;
+                    
+                    // Start console monitoring thread to detect window close
+                    _consoleMonitorThread = new Thread(MonitorConsoleWindow)
+                    {
+                        IsBackground = true,
+                        Name = "ConsoleMonitor"
+                    };
+                    _consoleMonitorThread.Start();
+                    
+                    // Also set up console control handler as backup
+                    _consoleCtrlHandler = new Native.ConsoleCtrlHandlerRoutine(ConsoleCtrlHandler);
+                    Native.SetConsoleCtrlHandler(_consoleCtrlHandler, true);
                 }
                 else if (hasConsole)
                 {
@@ -114,6 +131,54 @@ internal static class Initialization
             Client = client,
             Prompt = prompt
         };
+    }
+
+    private static void MonitorConsoleWindow()
+    {
+        IntPtr consoleHwnd = IntPtr.Zero;
+        
+        // Wait a bit for console to be fully created
+        Thread.Sleep(500);
+        
+        while (!_consoleClosed)
+        {
+            try
+            {
+                // Get current console window handle
+                IntPtr currentHwnd = Native.GetConsoleWindow();
+                
+                if (currentHwnd != IntPtr.Zero)
+                {
+                    consoleHwnd = currentHwnd;
+                }
+                else if (consoleHwnd != IntPtr.Zero)
+                {
+                    // Console window was closed
+                    Console.WriteLine("Console window closed. Exiting application...");
+                    Environment.Exit(0);
+                }
+                
+                Thread.Sleep(100); // Check every 100ms
+            }
+            catch
+            {
+                // If we can't check, assume console is closed
+                break;
+            }
+        }
+    }
+
+    private static bool ConsoleCtrlHandler(uint dwCtrlType)
+    {
+        // Handle console close event (CTRL_CLOSE_EVENT = 2)
+        if (dwCtrlType == Native.CTRL_CLOSE_EVENT)
+        {
+            Console.WriteLine("Console window closed. Exiting application...");
+            // Use Environment.Exit to immediately terminate the process
+            // This is appropriate for console applications when the console window is closed
+            Environment.Exit(0);
+        }
+        return false; // Let other handlers process the event
     }
 
     private static string ReadPromptFromConsole()

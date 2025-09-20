@@ -169,6 +169,17 @@ public static class Native
     internal const int SW_HIDE = 0;
     internal const int SW_MINIMIZE = 6;
 
+    // Console control handler
+    internal delegate bool ConsoleCtrlHandlerRoutine(uint dwCtrlType);
+    [DllImport("kernel32.dll")]
+    internal static extern bool SetConsoleCtrlHandler(ConsoleCtrlHandlerRoutine handler, bool add);
+
+    internal const uint CTRL_C_EVENT = 0;
+    internal const uint CTRL_BREAK_EVENT = 1;
+    internal const uint CTRL_CLOSE_EVENT = 2;
+    internal const uint CTRL_LOGOFF_EVENT = 5;
+    internal const uint CTRL_SHUTDOWN_EVENT = 6;
+
     internal const uint INPUT_MOUSE = 0;
     internal const uint INPUT_KEYBOARD = 1;
     internal const uint INPUT_HARDWARE = 2;
