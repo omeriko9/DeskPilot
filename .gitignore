@@ -46,6 +46,8 @@ packages/
 
 # Sensitive files
 settings.json
+test.cs
+
 
 # Screenshots or other media if not needed
 *.png
