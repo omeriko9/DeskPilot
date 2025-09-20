@@ -1,68 +1,71 @@
-# Copilot Instructions for DesktopAssist
+## DesktopAssist – Focused Build Rules for AI Agents
+Purpose: Drive Windows desktop UI via iterative multimodal LLM turns (text + annotated screenshot). Produce minimal, deterministic JSON plans that map directly to executor tools. Anything outside the contract wastes a turn.
 
-Purpose: Windows desktop automation loop driven by iterative multimodal LLM calls (text + screenshot). Keep responses lean, deterministic, and aligned with existing function schema.
+### 1. Runtime Architecture (read first)
+1. `Program.cs` loads `AppSettings` (env `OPENAI_API_KEY` fallback), optionally spawns overlay UI (`AppForm`) then calls `AutomationEngine.RunAsync` with the user's objective.
+2. `AutomationEngine.RunAsync` (loop): capture screenshot (with grid, cursor & inset via `Screenshot.CapturePrimaryPngBase64`), build system + user context, call LLM (`OpenAIClient`), parse with `InstructionParser`, execute each step with `Executor` then repeat until max steps or completion.
+3. `InstructionParser.TryParseResponse` expects strict JSON matching `StepsResponse` (`steps` array of `{tool,args,human_readable_justification}` + `done` nullable). Any deviation (extra prose, markdown fences, missing fields) risks rejection.
+4. `Executor` maps tools -> concrete actions (keyboard / mouse / window focus) using `NativeInput` / `Input` / `WindowFocus` utilities.
+5. Coordinate system: model sees an annotated full-virtual-desktop image; mouse tool consumes image pixel coordinates (NOT normalized screen coords). Mapping performed by `ScreenSnapshotInfo.MapFromImagePx`.
 
-## Architecture (read these first)
-- Entry: `Program.cs` loads `AppSettings`, optionally launches overlay `AppForm` (status UI) on a background STA thread, then drives `ExecutionEngine.RunAsync(prompt)`.
-- Core loop: `ExecutionEngine` captures a screenshot, builds a single "user" message (context + JSON schema instructions + screenshot), sends to LLM, parses JSON -> executes steps -> repeats until `done` or heuristic completion.
-- Parsing: `InstructionParser` expects JSON shape `{ "steps": [], "done": string|null }`. It tolerates malformed output via substring extraction & fallback heuristics.
-- Action dispatch: `ActionExecutor` maps `InstructionStep.function` to concrete OS input via `NativeInput` (SendInput P/Invokes). Supported functions: `sleep`, `moveto`, `click`, `write` (alias: `type`), `press`, `hotkey`.
-- Vision: `ScreenshotService` grabs & optionally downsizes/compresses the primary screen (JPEG). Re-uses last capture within `ReuseScreenshotWithinMs`.
-- Settings: `AppSettings` (auto-created `settings.json`, env var `OPENAI_API_KEY` fallback) controls models, timeouts, screenshot scaling, token budgets, adaptive retry/fallback logic.
-
-## LLM Contract (DO NOT DEVIATE)
-Return ONLY raw JSON (no markdown fences, no commentary) exactly:
-```
+### 2. JSON RESPONSE CONTRACT (DO NOT DEVIATE)
+Return ONLY a single JSON object:
 {
-  "steps": [ { "function": string, "parameters": { ... }, "human_readable_justification": string } ],
-  "done": null | string
+  "steps": [ { "tool": string, "args": { ... }, "human_readable_justification": string } ],
+  "done": null | string   // string = concise final summary
 }
-```
 Rules:
-- When finished: `steps: []` and concise natural-language summary in `done`.
-- Each step object must have all three keys even if `parameters` is `{}` or justification is brief.
-- Prefer small batches (1-4 steps). Avoid speculative long chains; engine loops anyway.
-- Use only supported function names; avoid inventing new ones (they will throw).
+- Keep 0–4 steps per turn. Engine loops; long speculative chains are trimmed.
+- When task complete: set steps = [] and place short natural language summary in `done`.
+- All step keys required even if args {}.
+- Use only supported tool names below; unrecognized tool silently wastes the turn.
 
-## Function Parameter Conventions
-- moveto / click: require in-bounds integer `x`,`y` (pixels). Example: `{ "function":"click","parameters":{"x":640,"y":300,"button":"left"},"human_readable_justification":"Open menu"}`
-- click extras: `button` (`left|right`), optional `clicks`, `interval_ms`.
-- write: `text` (plain ASCII-ish). Non a-z0-9 and space are mostly ignored; avoid punctuation heavy payloads.
-- press: either `key` (single) OR `keys` (array or delimited string: `"ctrl+shift+esc"`). Keys map via simple lowercase names (enter, esc, win, ctrl, shift, alt, letters, digits, f5).
-- hotkey: prefer `keys` array (e.g. `["win","r"]`). Engine will press combo (down all, then release reverse order).
-- sleep: `secs` (double). Keep short (< 2s) unless absolutely needed for UI readiness.
+### 3. Supported Tools & Args (match `Executor` switch)
+mouse: { x:int, y:int, button:"left|right|middle"?, clicks:1-4?, interval_ms:10-1000?, action:"move"? }  // image-space pixels; engine validates bounds
+press: { key:"enter" | keys:["ctrl","s", ...] }  // sequential taps (NOT chord)
+hotkey: { keys:["ctrl","shift","esc"] }  // chord: hold modifiers, press normals
+write | type: { text:"ascii-like" , interval_ms?:int }  // sends Unicode chars one by one
+paste: { text:"..." }  // sets clipboard then Ctrl+V
+sleep: { secs:int<=5 }
+launch: { command:"notepad" } // Win+R then command + Enter
+focus_window: { title:"substring" } // case-insensitive partial match
 
-## Heuristics & Verification
-- Engine has a heuristic finalization: if a write (matching original request substring) is followed by Enter, it may stop even without `done`. Better: explicitly set `done`.
-- Optional verification flow (off by default) re-prompts model with screenshot asking for `{verified, reason, if_not_verified_steps}`; steps share same schema.
+Notes:
+- Provide integer x,y inside the screenshot width/height; reuse prior coordinates when refining clicks.
+- For simple Enter after typing, prefer separate steps: write + press{key:"enter"}.
+- Avoid large pasted blobs; keep text purposeful.
 
-## Adaptive / Retry Behavior
-- Long header latency triggers model fallback (`FallbackModel`) and token budget halving (`EnableAdaptiveTokenScaling`). Be economical—avoid verbose justifications.
-- Empty or unparsable responses cause a constrained retry (smaller `max_completion_tokens`). Returning clean JSON first time avoids timeouts.
+### 4. Justification Field
+`human_readable_justification` appears in overlay (truncate > ~60 chars). Keep it short, imperative: "Open Run dialog", "Type filename".
 
-## Logging & Diagnostics
-- `VerboseNetworkLogging=true` prints prompt, raw/truncated body, timing, token usage fields if present.
-- Status UI (overlay) shows either "Thinking..." or current step function + justification; keep justifications short (<60 chars) for readability.
+### 5. Heuristics & Limits
+- `AppSettings.MaxSteps` (default 12) ends session; be explicit by setting `done` earlier when objective satisfied.
+- If you return no steps and no `done`, loop continues (wasted turn). Always choose one.
+- Returning > MaxSteps steps => truncated; include only essential immediate actions.
 
-## Adding New Actions (if extending)
-1. Add enum-like string in `ActionExecutor` switch. 2. Implement method translating params to `NativeInput`. 3. Update any parser normalization if introducing synonyms.
+### 6. Failure / Robustness Considerations
+- Parser demands every step has: non-empty tool, args object, non-empty justification. Provide empty object `{}` if no args.
+- A malformed response causes retry with reduced token budget—so first response correctness matters.
+- Do NOT emit markdown, commentary, or extra top-level keys.
 
-## DO / AVOID
-- DO keep JSON minimal & strictly valid UTF-8. - A single stray quote breaks parsing.
-- DO reuse coordinates previously referenced when performing related clicks; consistency aids reliability.
-- AVOID returning narrative text, markdown fences, or additional top-level keys.
-- AVOID large multi-second sleeps unless application launch truly requires it.
+### 7. Coordinate Reasoning Aids
+Screenshot overlay supplies: grid (50px minor / 200px major), cursor crosshair, magnified inset, dimension banner (e.g. `image=1920x1080`). Use those to pick precise x,y.
 
-## Example Valid Response
-```
+### 8. Extensibility (for maintainers only)
+Add new tool: modify `Executor.ExecuteAsync`, implement handler, keep name lowercase, and document args here. Maintain backward compatibility with existing names.
+
+### 9. Example Turn
 {
   "steps": [
-    {"function":"press","parameters":{"keys":["win"]},"human_readable_justification":"Open start menu"},
-    {"function":"write","parameters":{"text":"notepad"},"human_readable_justification":"Search app"},
-    {"function":"press","parameters":{"key":"enter"},"human_readable_justification":"Launch"}
+    {"tool":"hotkey","args":{"keys":["win","r"]},"human_readable_justification":"Open Run"},
+    {"tool":"write","args":{"text":"notepad"},"human_readable_justification":"Type app name"},
+    {"tool":"press","args":{"key":"enter"},"human_readable_justification":"Launch"}
   ],
   "done": null
 }
-```
 
-Feedback welcome: clarify unclear function semantics, add new action docs, or note recurring parsing issues.
+### 10. DO / AVOID Quick List
+DO: Minimal valid JSON, reuse coordinates, short justifications, finish early with `done` when goal reached.
+AVOID: Markdown fences, invented tool names, speculative multi-step chains, long sleeps, verbose prose.
+
+Feedback: Open an issue or comment in PR if parsing errors recur or new tool semantics needed.
