@@ -18,7 +18,8 @@ public class AppForm : Form
     private readonly System.Windows.Forms.Timer _thinkingTimer;
     private DateTime _thinkingStartUtc;
     private bool _isThinking;
-    private string _thinkingBaseText = "חושב..."; // canonical comparison baseline
+    public const string ThinkingBaseText = "Thinking..."; // public canonical baseline
+    private string _thinkingBaseText = ThinkingBaseText; // internal mutable baseline
 
     public AppForm()
     {

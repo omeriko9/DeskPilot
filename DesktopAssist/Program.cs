@@ -132,6 +132,9 @@ internal static class Program
                 //screenshotPngBase64SizeKb(screenshotPngB64)
                 (int)(Math.Round(Screenshot.CapturePrimaryPngBase64().b64.Length * 0.75) / 1024.0)
                 } KB)");
+
+            // Indicate thinking state (only once per LLM round) on overlay
+            statusCb?.Invoke(AppForm.ThinkingBaseText);
             var llmText = await client.CallAsync(systemPrompt,
                 JsonSerializer.Serialize(userContext),
                 screenshotPngB64);
@@ -179,6 +182,10 @@ internal static class Program
                 try
                 {
                     Console.WriteLine($"[Do] {step.tool} :: {step.human_readable_justification}");
+                    if (!string.IsNullOrWhiteSpace(step.human_readable_justification))
+                    {
+                        statusCb?.Invoke(step.human_readable_justification);
+                    }
                     await Executor.ExecuteAsync(step);
                     history += $"Tool: {step.tool}, args: {step.args}{Environment.NewLine}";
 
@@ -199,7 +206,7 @@ internal static class Program
         {
             if (settings.ShowProgressOverlay && overlayForm != null)
             {
-                overlayForm.UpdateStatus("������");
+                overlayForm.UpdateStatus("Done");
 
                 try
                 {

@@ -17,7 +17,7 @@ public static class InstructionParser
         var content = "";
         try
         {
-            if (raw.StartsWith("{\n  \"steps\":"))
+            if (raw.StartsWith("{\n  \"steps\":") || raw.StartsWith("{\"steps"))
             {
                 content = raw;
             }
