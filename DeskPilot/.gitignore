@@ -1,0 +1,21 @@
+# Python ignores for PyServer
+PyServer/__pycache__/
+PyServer/*.pyc
+PyServer/*.pyo
+PyServer/*.pyd
+PyServer/.Python
+PyServer/env/
+PyServer/venv/
+PyServer/.env
+PyServer/.venv
+PyServer/pip-log.txt
+PyServer/pip-delete-this-directory.txt
+PyServer/.tox/
+PyServer/.coverage
+PyServer/.coverage.*
+PyServer/.cache
+PyServer/nosetests.xml
+PyServer/coverage.xml
+PyServer/*.cover
+PyServer/.hypothesis/
+PyServer/.pytest_cache/

@@ -3,7 +3,7 @@ import base64
 import logging
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 import httpx
 
@@ -15,6 +15,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")  # adjust model id as needed
 TIMEOUT = float(os.getenv("OPENAI_TIMEOUT", "60"))
+PORT_NUMBER = "8009"
 
 logger = logging.getLogger("pyserver")
 logging.basicConfig(level=logging.INFO)
@@ -56,6 +57,7 @@ async def call_openai(payload: dict) -> dict:
     if not OPENAI_API_KEY:
         # Return mock response when key is missing (for offline dev)
         mock_text = '{"mock": true, "reason": "OPENAI_API_KEY missing"}'
+        logger.info("Mock mode: returning mock response")
         return {"output": [{"content": [{"text": mock_text}]}]}
 
     url = f"{OPENAI_BASE_URL.rstrip('/')}/responses"
@@ -63,17 +65,24 @@ async def call_openai(payload: dict) -> dict:
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json",
     }
+    logger.info(f"Calling OpenAI at {url} with payload size: {len(str(payload))} bytes")
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         resp = await client.post(url, json=payload, headers=headers)
+        logger.info(f"OpenAI response status: {resp.status_code}, size: {len(resp.text)} bytes")
         if resp.status_code >= 400:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
         return resp.json()
 
 @app.post("/")
-async def root(request: IncomingRequest):
+async def root(request: IncomingRequest, req: Request):
+    client_ip = req.client.host if req.client else "unknown"
+    request_size = len(str(request.dict()))  # approximate size
+    logger.info(f"Client {client_ip} connected, request size: {request_size} bytes")
     payload = build_openai_payload(request)
     try:
         openai_json = await call_openai(payload)
+        response_size = len(str(openai_json))
+        logger.info(f"Sending response to {client_ip}, size: {response_size} bytes")
     except HTTPException:
         raise
     except Exception as ex:
@@ -85,9 +94,13 @@ async def root(request: IncomingRequest):
 
 # Optional simple health endpoint
 @app.get("/health")
-async def health():
+async def health(req: Request):
+    client_ip = req.client.host if req.client else "unknown"
+    logger.info(f"Health check from {client_ip}")
     return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=False)
+    port = int(os.getenv("PORT", PORT_NUMBER))
+    logger.info(f"Starting server on port {port}")
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
