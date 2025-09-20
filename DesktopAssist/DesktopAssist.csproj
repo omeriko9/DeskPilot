@@ -9,6 +9,9 @@
     <RootNamespace>DesktopAssist</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="test.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <None Update="settings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

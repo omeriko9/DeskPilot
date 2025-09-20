@@ -89,20 +89,20 @@ internal static class Program
         if (OperatingSystem.IsWindows())
         {
             try
-            {
-                var hasConsole = GetConsoleWindow() != IntPtr.Zero;
-                if (settings.DebugConsole)
                 {
-                    if (!hasConsole) AllocConsole();
-                    Console.OutputEncoding = Encoding.UTF8;
-                    Console.InputEncoding = Encoding.UTF8;
+                    var hasConsole = Native.GetConsoleWindow() != IntPtr.Zero;
+                    if (settings.DebugConsole)
+                    {
+                        if (!hasConsole) Native.AllocConsole();
+                        Console.OutputEncoding = Encoding.UTF8;
+                        Console.InputEncoding = Encoding.UTF8;
+                    }
+                    else if (hasConsole)
+                    {
+                        var hWnd = Native.GetConsoleWindow();
+                        if (hWnd != IntPtr.Zero) Native.ShowWindow(hWnd, Native.SW_HIDE);
+                    }
                 }
-                else if (hasConsole)
-                {
-                    var hWnd = GetConsoleWindow();
-                    if (hWnd != IntPtr.Zero) ShowWindow(hWnd, SW_HIDE);
-                }
-            }
             catch { }
         }
 
@@ -133,15 +133,4 @@ internal static class Program
         return Console.ReadLine() ?? string.Empty;
     }
 
-#region Win32 Console Allocation
-    [DllImport("kernel32.dll", SetLastError = false)]
-    private static extern bool AllocConsole();
-
-    [DllImport("kernel32.dll", SetLastError = false)]
-    private static extern IntPtr GetConsoleWindow();
-
-    [DllImport("user32.dll", SetLastError = false)]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-    private const int SW_HIDE = 0;
-#endregion
 }

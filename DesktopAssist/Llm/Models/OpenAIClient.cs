@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace DesktopAssist.Llm.Models
 {
-    internal sealed class OpenAIClient
+    public sealed class OpenAIClient
     {
         private readonly HttpClient _http;
         private readonly string _model;

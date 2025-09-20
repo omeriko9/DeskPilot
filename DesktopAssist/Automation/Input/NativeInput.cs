@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace DesktopAssist.Automation.Input;
 
-internal enum VirtualKey : ushort
+public enum VirtualKey : ushort
 {
     VK_BACK = 0x08, VK_TAB = 0x09, VK_RETURN = 0x0D, VK_SHIFT = 0x10, VK_CONTROL = 0x11, VK_MENU = 0x12,
     VK_PAUSE = 0x13, VK_CAPITAL = 0x14, VK_ESCAPE = 0x1B, VK_SPACE = 0x20,
@@ -24,14 +24,14 @@ internal enum VirtualKey : ushort
 
 // Correct SendInput interop layout (include full union). A too-small cbSize causes ERROR_INVALID_PARAMETER (87).
 [StructLayout(LayoutKind.Sequential)]
-internal struct INPUT
+public struct INPUT
 {
     public uint type; // 0=mouse,1=keyboard,2=hardware
     public InputUnion U;
 }
 
 [StructLayout(LayoutKind.Explicit)]
-internal struct InputUnion
+public struct InputUnion
 {
     [FieldOffset(0)] public MOUSEINPUT mi;
     [FieldOffset(0)] public KEYBDINPUT ki;
@@ -39,7 +39,7 @@ internal struct InputUnion
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct MOUSEINPUT
+public struct MOUSEINPUT
 {
     public int dx;
     public int dy;
@@ -50,7 +50,7 @@ internal struct MOUSEINPUT
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct HARDWAREINPUT
+public struct HARDWAREINPUT
 {
     public uint uMsg;
     public ushort wParamL;
@@ -58,7 +58,7 @@ internal struct HARDWAREINPUT
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct KEYBDINPUT
+public struct KEYBDINPUT
 {
     public ushort wVk;
     public ushort wScan;
@@ -68,7 +68,7 @@ internal struct KEYBDINPUT
 }
 
 
-internal static class ScreenSnapshotInfo
+public static class ScreenSnapshotInfo
 {
     public static int VirtualLeft { get; private set; }
     public static int VirtualTop { get; private set; }
@@ -120,7 +120,7 @@ internal static class ScreenSnapshotInfo
     }
 }
 
-internal static class Native
+public static class Native
 {
     [DllImport("user32.dll")] internal static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] internal static extern bool IsWindowVisible(IntPtr hWnd);
@@ -155,10 +155,13 @@ internal static class Native
     internal const int SM_CYVIRTUALSCREEN = 79;
 
     [DllImport("user32.dll", SetLastError = true)]
-    internal static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+    public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
     [DllImport("kernel32.dll")]
-    internal static extern IntPtr GetConsoleWindow();
+    public static extern IntPtr GetConsoleWindow();
+
+    [DllImport("kernel32.dll", SetLastError = false)]
+    public static extern bool AllocConsole();
 
     [DllImport("user32.dll")]
     internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);

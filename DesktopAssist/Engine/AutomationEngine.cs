@@ -10,6 +10,7 @@ using DesktopAssist.Screen;
 using DesktopAssist.Settings;
 using DesktopAssist.Llm;
 using DesktopAssist.Engine;
+using DesktopAssist.Automation.Input;
 
 namespace DesktopAssist.Engine;
 
