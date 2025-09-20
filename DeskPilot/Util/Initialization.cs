@@ -13,16 +13,17 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using DesktopAssist.Util;
 
 namespace DesktopAssist.Util;
 
 internal class InitializationResult
 {
-    public AppSettings Settings { get; set; }
+    public required AppSettings Settings { get; set; }
     public AppForm? OverlayForm { get; set; }
     public Thread? UiThread { get; set; }
     public Action<string>? StatusCallback { get; set; }
-    public OpenAIClient Client { get; set; }
+    public required OpenAIClient Client { get; set; }
     public string? Prompt { get; set; }
 }
 
@@ -54,7 +55,7 @@ internal static class Initialization
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[UI][Error] {ex.Message}");
+                    Log.Error("UI", ex);
                     uiReady.Set();
                 }
             }) { IsBackground = true };
@@ -101,7 +102,7 @@ internal static class Initialization
         string prompt = args.Length > 0 ? string.Join(" ", args) : ReadPromptFromConsole();
         if (string.IsNullOrWhiteSpace(prompt))
         {
-            Console.WriteLine("No prompt provided. Exiting.");
+            Log.Warn("Init", "No prompt provided. Exiting.");
             return new InitializationResult
             {
                 Settings = settings,
@@ -113,7 +114,7 @@ internal static class Initialization
             };
         }
 
-        Console.WriteLine($"Starting DesktopAssist with prompt: {prompt}");
+    Log.Info("Init", $"Starting DesktopAssist with prompt: {prompt}");
 
         Action<string>? statusCb = null;
         if (settings.ShowProgressOverlay && overlayForm != null)
@@ -154,7 +155,7 @@ internal static class Initialization
                 else if (consoleHwnd != IntPtr.Zero)
                 {
                     // Console window was closed
-                    Console.WriteLine("Console window closed. Exiting application...");
+                    Log.Warn("Console", "Console window closed. Exiting application...");
                     Environment.Exit(0);
                 }
                 
@@ -173,7 +174,7 @@ internal static class Initialization
         // Handle console close event (CTRL_CLOSE_EVENT = 2)
         if (dwCtrlType == Native.CTRL_CLOSE_EVENT)
         {
-            Console.WriteLine("Console window closed. Exiting application...");
+            Log.Warn("Console", "Console window closed. Exiting application...");
             // Use Environment.Exit to immediately terminate the process
             // This is appropriate for console applications when the console window is closed
             Environment.Exit(0);

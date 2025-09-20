@@ -21,8 +21,8 @@ namespace DesktopAssist.Screen
             g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.SingleBitPerPixelGridFit;
 
-            // Grid setup: 50px minor, 200px major
-            const int minor = 50, major = 200;
+            // Grid setup (shared constants)
+            const int minor = Util.AppConstants.GridMinorPx, major = Util.AppConstants.GridMajorPx;
             using var penMinor = new Pen(Color.FromArgb(80, 255, 255, 255), 1);
             using var penMajor = new Pen(Color.FromArgb(220, 255, 255, 255), 2);
 
@@ -162,13 +162,13 @@ namespace DesktopAssist.Screen
             int cy = (int)Math.Round((p.Y - vy) * (double)h / vh);
 
             // Crop region (source space)
-            const int srcBox = 160; // 160×160 px around cursor
+            const int srcBox = Util.AppConstants.InsetCropSizePx; // region size around cursor
             int half = srcBox / 2;
             int sx = Math.Max(0, Math.Min(w - srcBox, cx - half));
             int sy = Math.Max(0, Math.Min(h - srcBox, cy - half));
 
             // Create magnified bitmap
-            const int scale = 6;
+            const int scale = Util.AppConstants.InsetScaleFactor;
             var magBmp = new Bitmap(srcBox * scale, srcBox * scale, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
             using (var gMag = Graphics.FromImage(magBmp))
             {

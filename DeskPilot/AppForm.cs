@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using DesktopAssist.Util;
 
 namespace DesktopAssist;
 
@@ -33,8 +34,8 @@ public class AppForm : Form
         Opacity = 0.88;
 
     var screen = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
-        Width = Math.Max(400, screen.Width / 4);
-        Height = Math.Max(250, screen.Height / 4);
+        Width = Math.Max(AppConstants.OverlayMinWidth, screen.Width / 4);
+        Height = Math.Max(AppConstants.OverlayMinHeight, screen.Height / 4);
         Left = screen.Width - Width;
         Top = 0;
 

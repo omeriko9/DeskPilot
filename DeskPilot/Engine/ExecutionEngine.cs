@@ -12,17 +12,13 @@ using DesktopAssist.Llm.Models;
 using DesktopAssist.Screen;
 using DesktopAssist.Settings;
 using DesktopAssist.Automation.Input;
+using DesktopAssist.Util;
 
 namespace DesktopAssist.Engine;
 
 public sealed class Executor
 {
-
-
-    public static void ExecuteAsync()
-    {
-
-    }
+    // Executes a single automation step emitted by the LLM plan
 
     public static Task ExecuteAsync(Step s)
     {
@@ -43,7 +39,7 @@ public sealed class Executor
                     if (s.args.TryGetProperty("title", out var tv) && tv.ValueKind == JsonValueKind.String)
                         title = tv.GetString();
                     var ok = WindowFocus.FocusByTitleSubstring(title);
-                    Console.WriteLine(ok ? "[Exec][focus_window] focused" : "[Exec][focus_window][Warn] not found");
+                    if (ok) Log.Info("Exec.focus_window", "focused"); else Log.Warn("Exec.focus_window", "not found");
                     break;
                 }
                 //case "set_keyboard_layout":
@@ -55,7 +51,7 @@ public sealed class Executor
     private static void Sleep(JsonElement args)
     {
         int secs = args.TryGetProperty("secs", out var v) && v.TryGetInt32(out var i) ? i : 1;
-        Console.WriteLine($"[Exec][sleep] secs={secs}");
+    Log.Info("Exec.sleep", $"secs={secs}");
         Thread.Sleep(TimeSpan.FromSeconds(Math.Clamp(secs, 0, 5)));
     }
 
@@ -64,7 +60,7 @@ public sealed class Executor
         if (!args.TryGetProperty("text", out var t) || t.ValueKind != JsonValueKind.String) return;
         string text = t.GetString() ?? "";
         int interval = args.TryGetProperty("interval_ms", out var iv) && iv.TryGetInt32(out var i) ? i : 20;
-        Console.WriteLine($"[Exec][write] len={text.Length} interval_ms={interval}");
+    Log.Info("Exec.write", $"len={text.Length} interval_ms={interval}");
         Input.SendUnicodeString(text, interval);
     }
 
@@ -72,7 +68,7 @@ public sealed class Executor
     {
         if (!args.TryGetProperty("text", out var t) || t.ValueKind != JsonValueKind.String) return;
         string text = t.GetString() ?? "";
-        Console.WriteLine($"[Exec][paste] len={text.Length}");
+    Log.Info("Exec.paste", $"len={text.Length}");
         ClipboardUtil.SetText(text);
         Input.KeyChord(new[] { VirtualKey.VK_CONTROL }, new[] { VirtualKey.VK_V });
     }
@@ -81,7 +77,7 @@ public sealed class Executor
     {
         // sequential taps
         var keys = ReadKeys(args);
-        Console.WriteLine($"[Exec][press] count={keys.Count} keys=[{string.Join(',', keys)}]");
+    Log.Info("Exec.press", $"count={keys.Count} keys=[{string.Join(',', keys)}]");
         foreach (var k in keys)
         {
             Input.KeyTap(k);
@@ -95,7 +91,7 @@ public sealed class Executor
         var keys = ReadKeys(args);
         // Split into modifiers and normals
         var (mods, normals) = KeySplit(keys);
-        Console.WriteLine($"[Exec][hotkey] mods=[{string.Join(',', mods)}] normals=[{string.Join(',', normals)}]");
+    Log.Info("Exec.hotkey", $"mods=[{string.Join(',', mods)}] normals=[{string.Join(',', normals)}]");
         Input.KeyChord(mods.ToArray(), normals.ToArray());
     }
 
@@ -104,7 +100,7 @@ public sealed class Executor
         // Deterministic: Win+R -> type command -> Enter
         if (!args.TryGetProperty("command", out var c) || c.ValueKind != JsonValueKind.String) return;
         string command = c.GetString() ?? "";
-        Console.WriteLine($"[Exec][launch] command={command}");
+    Log.Info("Exec.launch", $"command={command}");
         Input.KeyChord(new[] { VirtualKey.VK_LWIN }, new[] { VirtualKey.VK_R }); // Win+R
         Thread.Sleep(150);
         Input.SendUnicodeString(command, 8);
@@ -117,16 +113,16 @@ public sealed class Executor
         if (!(args.TryGetProperty("x", out var xj) && args.TryGetProperty("y", out var yj)
               && xj.TryGetInt32(out var xImg) && yj.TryGetInt32(out var yImg)))
         {
-            Console.WriteLine("[Exec][mouse][Reject] Provide integer x,y (image pixels).");
+            Log.Warn("Exec.mouse", "Reject: Provide integer x,y (image pixels)");
             return;
         }
 
         var iw = ScreenSnapshotInfo.LastImageWidth;
         var ih = ScreenSnapshotInfo.LastImageHeight;
-        if (iw <= 0 || ih <= 0) { Console.WriteLine("[Exec][mouse][Reject] No image size in session."); return; }
+    if (iw <= 0 || ih <= 0) { Log.Warn("Exec.mouse", "Reject: No image size in session"); return; }
         if (xImg < 0 || yImg < 0 || xImg >= iw || yImg >= ih)
         {
-            Console.WriteLine($"[Exec][mouse][Reject] Out of bounds: ({xImg},{yImg}) not in [0..{iw - 1}]x[0..{ih - 1}]");
+            Log.Warn("Exec.mouse", $"Reject: OOB ({xImg},{yImg}) not in [0..{iw - 1}]x[0..{ih - 1}]");
             return;
         }
 
@@ -138,13 +134,13 @@ public sealed class Executor
         string? action = args.TryGetProperty("action", out var av) && av.ValueKind == JsonValueKind.String ? av.GetString()!.ToLowerInvariant() : null;
         bool moveOnly = (action == "move");
 
-        Console.WriteLine($"[Exec][mouse] img=({xImg},{yImg}) -> screen=({sx},{sy}) btn={button} clicks={clicks} moveOnly={moveOnly}");
+    Log.Info("Exec.mouse", $"img=({xImg},{yImg}) -> screen=({sx},{sy}) btn={button} clicks={clicks} moveOnly={moveOnly}");
 
         Native.SetCursorPos(sx, sy);
         Thread.Sleep(25);
         if (Native.GetCursorPos(out var p) && (Math.Abs(p.X - sx) > 2 || Math.Abs(p.Y - sy) > 2))
         {
-            Console.WriteLine($"[Exec][mouse][Adjust] actual=({p.X},{p.Y}) -> retry ({sx},{sy})");
+            Log.Info("Exec.mouse.adjust", $"actual=({p.X},{p.Y}) -> retry ({sx},{sy})");
             Native.SetCursorPos(sx, sy);
             Thread.Sleep(25);
         }
@@ -154,40 +150,6 @@ public sealed class Executor
             for (int i = 0; i < clicks; i++) { Input.MouseClick(button); Thread.Sleep(interval); }
         }
     }
-
-
-    private static void MouseAt(int x, int y, JsonElement args)
-    {
-        string button = args.TryGetProperty("button", out var b) && b.ValueKind == JsonValueKind.String ? b.GetString()!.ToLowerInvariant() : "left";
-        int clicks = args.TryGetProperty("clicks", out var cv) && cv.TryGetInt32(out var ci) ? Math.Clamp(ci, 1, 4) : 1;
-        int interval = args.TryGetProperty("interval_ms", out var iv) && iv.TryGetInt32(out var ii) ? Math.Clamp(ii, 10, 1000) : 120;
-        string? action = args.TryGetProperty("action", out var av) && av.ValueKind == JsonValueKind.String ? av.GetString()!.ToLowerInvariant() : null;
-        bool moveOnly = (action == "move");
-
-        Console.WriteLine($"[Exec][mouse] map-> x={x} y={y} btn={button} clicks={clicks} moveOnly={moveOnly}");
-        Native.SetCursorPos(x, y);
-        Thread.Sleep(25);
-
-        if (Native.GetCursorPos(out var p))
-        {
-            if (Math.Abs(p.X - x) > 2 || Math.Abs(p.Y - y) > 2)
-            {
-                Console.WriteLine($"[Exec][mouse][Adjust] actual=({p.X},{p.Y}) -> retry ({x},{y})");
-                Native.SetCursorPos(x, y);
-                Thread.Sleep(25);
-            }
-        }
-
-        if (!moveOnly)
-        {
-            for (int i = 0; i < clicks; i++)
-            {
-                Input.MouseClick(button);
-                Thread.Sleep(interval);
-            }
-        }
-    }
-
 
 
     private static List<VirtualKey> ReadKeys(JsonElement args)

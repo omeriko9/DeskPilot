@@ -23,13 +23,15 @@ public static class AutomationEngine
     {
         int outerStep = 0;
         string history = string.Empty;
+        // Read system prompt once (avoid per-iteration disk I/O)
+        var systemPrompt = File.ReadAllText("prompts/system_prompt.txt");
 
         while (outerStep < settings.MaxSteps)
         {
             outerStep++;
             var (screenshotPngB64, size) = Screenshot.CapturePrimaryPngBase64();
-
-            var systemPrompt = File.ReadAllText("prompts/system_prompt.txt");
+            // compute approximate decoded bytes (Base64 expands ~4/3)
+            var screenshotKb = (int)Math.Round((screenshotPngB64.Length * 0.75) / 1024.0);
             var userContext = new
             {
                 original_user_request = prompt,
@@ -47,7 +49,7 @@ public static class AutomationEngine
                 }
             };
 
-            Console.WriteLine($"[LLM] Turn {outerStep} -> sending screenshot ({(int)(Math.Round(Screenshot.CapturePrimaryPngBase64().b64.Length * 0.75) / 1024.0)} KB)");
+            Console.WriteLine($"[LLM] Turn {outerStep} -> sending screenshot ({screenshotKb} KB)");
             statusCb?.Invoke(AppForm.ThinkingBaseText);
 
             var llmText = await client.CallAsync(systemPrompt, JsonSerializer.Serialize(userContext), screenshotPngB64);
