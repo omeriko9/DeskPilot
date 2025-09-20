@@ -22,9 +22,11 @@ internal static class Program
     private static async Task<int> Main(string[] args)
     {
         var (settings, overlayForm, uiThread, statusCb, client, prompt) = Initialize(args);
-        if (prompt == null) return 1; // initialization already reported error
-        await AutomationEngine.RunAsync(settings, client, prompt, statusCb);
+        if (prompt == null) 
+            return 1; // initialization already reported error
 
+        
+        await AutomationEngine.RunAsync(settings, client, prompt, statusCb);
 
         try
         {
