@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using DesktopAssist.Llm.Models;
+using DesktopAssist.Llm;
 using DesktopAssist.Screen;
 using DesktopAssist.Settings;
 using DesktopAssist.Llm;
@@ -19,7 +20,7 @@ namespace DesktopAssist.Engine;
 /// </summary>
 public static class AutomationEngine
 {
-    public static async Task RunAsync(AppSettings settings, OpenAIClient client, string prompt, Action<string>? statusCb, string tmpFileName = "output.txt")
+    public static async Task RunAsync(AppSettings settings, LLMClient client, string prompt, Action<string>? statusCb, string tmpFileName = "output.txt")
     {
         int outerStep = 0;
         string history = string.Empty;

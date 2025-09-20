@@ -23,7 +23,7 @@ internal class InitializationResult
     public AppForm? OverlayForm { get; set; }
     public Thread? UiThread { get; set; }
     public Action<string>? StatusCallback { get; set; }
-    public required OpenAIClient Client { get; set; }
+    public required LLMClient Client { get; set; }
     public string? Prompt { get; set; }
 }
 
@@ -122,7 +122,7 @@ internal static class Initialization
             statusCb = s => { try { overlayForm.UpdateStatus(s); } catch { } };
         }
 
-        var client = new OpenAIClient(settings.BaseUrl, settings.ApiKey, settings.Model);
+    var client = new OpenAIClient(settings.BaseUrl, settings.ApiKey, settings.Model);
         return new InitializationResult
         {
             Settings = settings,
@@ -178,6 +178,8 @@ internal static class Initialization
             // Use Environment.Exit to immediately terminate the process
             // This is appropriate for console applications when the console window is closed
             Environment.Exit(0);
+            Application.Exit();
+            _consoleClosed = true;
         }
         return false; // Let other handlers process the event
     }

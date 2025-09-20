@@ -9,11 +9,14 @@ using System.Threading.Tasks;
 
 namespace DesktopAssist.Llm.Models
 {
-    public sealed class OpenAIClient
+    public sealed class OpenAIClient : LLMClient
     {
         private readonly HttpClient _http;
         private readonly string _model;
         private readonly string _responsesUrl;
+
+        public event EventHandler<string>? Info;
+        public event EventHandler<string>? Error;
 
         public OpenAIClient(string baseUrl, string apiKey, string model)
         {
@@ -46,10 +49,10 @@ namespace DesktopAssist.Llm.Models
                 {
                     // 1) Plain request for maximal attention
                     new { type = "input_text", text = "ORIGINAL_USER_REQUEST_UTF8:\n" +
-                        ExtractOriginalUserRequestFromContext(userContextJson) },
+                        LlmCommon.ExtractOriginalUserRequest(userContextJson) },
                     // 2) Base64 mirror, declared explicitly
                     new { type = "input_text", text = "ORIGINAL_USER_REQUEST_BASE64:\n" +
-                        ExtractOriginalUserRequestB64FromContext(userContextJson) },
+                        LlmCommon.ExtractOriginalUserRequestBase64(userContextJson) },
                     // 3) The structured context (unchanged)
                     new { type = "input_text", text = "USER_CONTEXT_JSON:\n" + userContextJson +
                         "\n\nSTRICTLY FOLLOW THE SYSTEM RULES. Return ONLY the raw JSON object." },
@@ -67,7 +70,7 @@ namespace DesktopAssist.Llm.Models
             var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {
-                Console.WriteLine($"[LLM][HTTP {(int)resp.StatusCode}] {body}");
+                Error?.Invoke(this, $"HTTP {(int)resp.StatusCode}: {body}");
                 return null;
             }
 
@@ -99,30 +102,9 @@ namespace DesktopAssist.Llm.Models
                     }
                 }
             }
-            catch (Exception ex) { Console.WriteLine("[LLM][ParseResp] " + ex.Message); }
+            catch (Exception ex) { Error?.Invoke(this, "ParseResp: " + ex.Message); }
 
             return body;
         }
-
-        private static string ExtractOriginalUserRequestFromContext(string ctxJson)
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(ctxJson);
-                return doc.RootElement.GetProperty("original_user_request").GetString() ?? "";
-            }
-            catch { return ""; }
-        }
-
-        private static string ExtractOriginalUserRequestB64FromContext(string ctxJson)
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(ctxJson);
-                return doc.RootElement.GetProperty("original_user_request_b64").GetString() ?? "";
-            }
-            catch { return ""; }
-        }
-
     }
 }
