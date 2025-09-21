@@ -47,6 +47,9 @@ public sealed class Executor
                 //case "set_keyboard_layout":
                 // default: throw new InvalidOperationException($"Unsupported tool: {s.tool}");
         }
+
+        Thread.Sleep(500);
+
         return Task.CompletedTask;
     }
 
@@ -181,19 +184,25 @@ public sealed class Executor
 
         var iw = ScreenSnapshotInfo.LastImageWidth;
         var ih = ScreenSnapshotInfo.LastImageHeight;
-    if (iw <= 0 || ih <= 0) { Log.Warn("Exec.mouse", "Reject: No image size in session"); return; }
-        if (xImg < 0 || yImg < 0 || xImg >= iw || yImg >= ih)
+        bool haveImage = iw > 0 && ih > 0;
+
+        // If no image captured in this session, we will treat coordinates as screen space unless coord_type forces image.
+        if (haveImage)
         {
-            Log.Warn("Exec.mouse", $"Reject: OOB ({xImg},{yImg}) not in [0..{iw - 1}]x[0..{ih - 1}]");
-            return;
+            if (xImg < 0 || yImg < 0 || xImg >= iw || yImg >= ih)
+            {
+                Log.Warn("Exec.mouse", $"Reject: OOB ({xImg},{yImg}) not in [0..{iw - 1}]x[0..{ih - 1}] image_mode");
+                return;
+            }
         }
 
         string coordType = args.TryGetProperty("coord_type", out var ctVal) && ctVal.ValueKind == JsonValueKind.String ? ctVal.GetString()!.ToLowerInvariant() : "image";
         int sx, sy;
-        if (coordType == "screen")
+        if (coordType == "screen" || !haveImage)
         {
             // Interpret provided x,y directly as screen pixels (debug path)
             sx = xImg; sy = yImg;
+            if (!haveImage && coordType != "screen") coordType = "screen_auto";
         }
         else
         {
@@ -207,7 +216,8 @@ public sealed class Executor
         string? action = args.TryGetProperty("action", out var av) && av.ValueKind == JsonValueKind.String ? av.GetString()!.ToLowerInvariant() : null;
         bool moveOnly = (action == "move");
 
-    Log.Info("Exec.mouse", $"mode={coordType} src=({xImg},{yImg}) -> screen=({sx},{sy}) btn={button} clicks={clicks} moveOnly={moveOnly}");
+        bool focusUnder = args.TryGetProperty("focus_under_cursor", out var fval) && fval.ValueKind == JsonValueKind.True;
+    Log.Info("Exec.mouse", $"mode={coordType} src=({xImg},{yImg}) -> screen=({sx},{sy}) btn={button} clicks={clicks} moveOnly={moveOnly} focusUnder={focusUnder}");
 
         // Record pre-move position
     Native.POINT before;
@@ -266,6 +276,11 @@ public sealed class Executor
 
         if (!moveOnly)
         {
+            if (focusUnder)
+            {
+                TryFocusWindowAt(sx, sy);
+                Thread.Sleep(30);
+            }
             for (int i = 0; i < clicks; i++)
             {
                 Input.MouseClick(button);
@@ -324,6 +339,29 @@ public sealed class Executor
             Log.Error("Exec.mouse.absmove", ex, "exception");
         }
     }
+
+    private static void TryFocusWindowAt(int sx, int sy)
+    {
+        try
+        {
+            // Basic P/Invoke locally declared to avoid adding to Native unless needed widely
+            IntPtr hWnd = WindowFromPointLocal(sx, sy);
+            if (hWnd == IntPtr.Zero) { Log.Warn("Exec.mouse.focus", "WindowFromPoint returned null"); return; }
+            if (!Native.IsWindowVisible(hWnd)) { Log.Warn("Exec.mouse.focus", "target window not visible"); }
+            // Attempt to bring to foreground
+            if (!Native.SetForegroundWindow(hWnd))
+            {
+                Log.Warn("Exec.mouse.focus", "SetForegroundWindow failed (may already be foreground or blocked)");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Exec.mouse.focus", ex, "exception");
+        }
+    }
+
+    [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(int x, int y);
+    private static IntPtr WindowFromPointLocal(int x, int y) => WindowFromPoint(x, y);
 
 
     private static List<VirtualKey> ReadKeys(JsonElement args)

@@ -12,6 +12,7 @@ using DesktopAssist.Settings;
 using DesktopAssist.Llm;
 using DesktopAssist.Engine;
 using DesktopAssist.Automation.Input;
+using DesktopAssist.Util;
 
 namespace DesktopAssist.Engine;
 
@@ -33,13 +34,17 @@ public static class AutomationEngine
             var (screenshotPngB64, size) = Screenshot.CapturePrimaryPngBase64();
             // compute approximate decoded bytes (Base64 expands ~4/3)
             var screenshotKb = (int)Math.Round((screenshotPngB64.Length * 0.75) / 1024.0);
+            var focusInfo = FocusInfoProvider.Capture();
+            int remaining = Math.Max(0, settings.MaxSteps - (outerStep - 1));
             var userContext = new
             {
                 original_user_request = prompt,
                 original_user_request_b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(prompt)),
                 step_num = outerStep - 1,
+                remaining_steps = remaining,
                 actions_history = history,
                 keyboard_only_hint = settings.KeyboardOnlyMode,
+                focus_snapshot = focusInfo, // single focused control snapshot; may have Ok=false
                 image_space = new { width = size.Width, height = size.Height },
                 virtual_screen = new
                 {

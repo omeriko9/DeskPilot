@@ -13,7 +13,7 @@ public sealed record AppSettings
     public string ApiKey { get; init; } = string.Empty;
     public string Model { get; init; } = "gpt-4.1";
     public string BaseUrl { get; init; } = "https://api.openai.com/v1/";
-    public int MaxSteps { get; init; } = 12;
+    public int MaxSteps { get; init; } = 30;
     public int StepDelayMs { get; init; } = 500; // artificial delay between executed steps
     public bool ShowProgressOverlay { get; init; } = true; // show floating UI with thinking/step updates
     public bool DebugConsole { get; init; } = true; // allocate/show console window (if detached) for diagnostics

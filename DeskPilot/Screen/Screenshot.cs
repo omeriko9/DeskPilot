@@ -5,6 +5,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using System.Drawing;
+using System.Windows.Forms;
+using System.IO;
+
 namespace DesktopAssist.Screen
 {
     internal static class Screenshot
@@ -190,6 +194,29 @@ namespace DesktopAssist.Screen
             return (png, bmp.Size);
         }
 
+        private static (byte[] png, Size size) CaptureDesktopPng()
+        {
+            var bounds = System.Windows.Forms.Screen.PrimaryScreen.Bounds;
+            int vx = bounds.X;
+            int vy = bounds.Y;
+            int vw = bounds.Width;
+            int vh = bounds.Height;
+
+            using var bmp = new Bitmap(vw, vh, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                // Copy from the primary screen coordinates into our 0,0 destination.
+                g.CopyFromScreen(vx, vy, 0, 0, new Size(vw, vh), CopyPixelOperation.SourceCopy);
+            }
+
+            using var ms = new MemoryStream();
+            bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+
+            var png = ms.ToArray();
+            ScreenSnapshotInfo.SetImageSize(bmp.Size);
+            return (png, bmp.Size);
+        }
+
         private static byte[] DrawInsetAroundCursor(byte[] png, int w, int h)
         {
             using var msIn = new MemoryStream(png);
@@ -310,17 +337,19 @@ namespace DesktopAssist.Screen
             */
 
 
-            var (pngBytes, size) = CaptureVirtualDesktopPng();
-            var pngWithAxes = DrawAxesOverlay(pngBytes, size.Width, size.Height);
-            var pngFinal = DrawCursorOverlay(pngWithAxes, size.Width, size.Height);
-            var final2 = DrawInsetAroundCursor(pngFinal, size.Width, size.Height);
+            var (pngBytes, size) = CaptureDesktopPng(); // CaptureVirtualDesktopPng();
+            //var pngWithAxes = DrawAxesOverlay(pngBytes, size.Width, size.Height);
+            //var pngFinal = DrawCursorOverlay(pngWithAxes, size.Width, size.Height);
+            //var final2 = DrawInsetAroundCursor(pngFinal, size.Width, size.Height);
+            var final2 = pngBytes;
             string screenshotBase64 = Convert.ToBase64String(final2);
 
             // (Optionally) log:
             Console.WriteLine($"[Snap] image={size.Width}x{size.Height} virtual={ScreenSnapshotInfo.VirtualWidth}x{ScreenSnapshotInfo.VirtualHeight} origin=({ScreenSnapshotInfo.VirtualLeft},{ScreenSnapshotInfo.VirtualTop})");
-            // save screenshotBase64 to disk as a PNG for debugging:
-            System.IO.File.WriteAllBytes("screenshot.png", pngFinal);
 
+            // Save final image (with inset) to disk for debugging using a timestamped filename
+            var filename = $"screenshot_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+            System.IO.File.WriteAllBytes(filename, final2);
 
             return (screenshotBase64, size);
         }

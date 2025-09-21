@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using DesktopAssist.Engine;
 using DesktopAssist.Llm.Models;
+using DesktopAssist.Screen;
 
 namespace DesktopAssist;
 
@@ -98,6 +99,7 @@ public class ReplayForm : Form
                 if (doDelay && delay > 0) await Task.Delay(delay);
             }
 
+            Screenshot.CapturePrimaryPngBase64();
             LogLine("Replay complete.");
         }
         finally
