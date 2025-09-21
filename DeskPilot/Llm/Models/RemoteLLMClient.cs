@@ -52,8 +52,8 @@ namespace DesktopAssist.Llm.Models
                     return null;
                 }
                 // Try to reuse OpenAI style parser if shape matches
-                var extracted = OpenAIResponseParser.ExtractText(body, m => Info?.Invoke(this, m));
-                return extracted ?? body;
+                
+                return body;
             }
             catch (Exception ex)
             {

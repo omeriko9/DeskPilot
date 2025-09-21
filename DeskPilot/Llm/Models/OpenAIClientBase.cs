@@ -9,8 +9,8 @@ namespace DesktopAssist.Llm.Models
     /// </summary>
     public abstract class OpenAIClientBase : LLMClient
     {
-        protected readonly HttpClient Http;
-        protected readonly string Model;
+    protected readonly HttpClient Http;
+    private string _model;
         protected readonly string BaseUrl;
 
         public event EventHandler<string>? Info;
@@ -19,10 +19,19 @@ namespace DesktopAssist.Llm.Models
         protected OpenAIClientBase(string baseUrl, string apiKey, string model, TimeSpan? timeout = null)
         {
             BaseUrl = baseUrl.TrimEnd('/');
-            Model = model;
+            _model = model;
             Http = new HttpClient { Timeout = timeout ?? TimeSpan.FromSeconds(90) };
             Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             Http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        }
+
+        public string CurrentModel => _model;
+        public void SetModel(string model)
+        {
+            if (!string.IsNullOrWhiteSpace(model))
+            {
+                _model = model.Trim();
+            }
         }
 
         protected void RaiseInfo(string msg) => Info?.Invoke(this, msg);

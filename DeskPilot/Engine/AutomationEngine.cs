@@ -21,12 +21,20 @@ namespace DesktopAssist.Engine;
 /// </summary>
 public static class AutomationEngine
 {
-    public static async Task RunAsync(AppSettings settings, LLMClient client, string prompt, Action<string>? statusCb, string tmpFileName = "output.txt")
+    public static async Task RunAsync(AppSettings settings, LLMClient client, string prompt, Action<string>? statusCb)
     {
         int outerStep = 0;
         string history = string.Empty;
         // Read system prompt once (avoid per-iteration disk I/O)
         var systemPrompt = File.ReadAllText("prompts/system_prompt.txt");
+        int iterationsWithoutResolution = 0;
+        bool upgradedToStrong = false;
+        bool upgradedToStrongest = false;
+        
+        var fileNameOnly = Path.GetFileNameWithoutExtension(settings.LogBaseFileName);
+        var tmpFileName = $"{fileNameOnly}.{DateTime.Now:yyyyMMdd_HHmmss}.runlog.txt";
+
+        File.AppendAllText(tmpFileName, $"System Prompt:{Environment.NewLine}");
 
         while (outerStep < settings.MaxSteps)
         {
@@ -71,12 +79,37 @@ public static class AutomationEngine
             // Log outgoing request to console for diagnostics 
             var previewContext = serializedContext;
 
-            Console.WriteLine($"Serialized Context: {serializedContext}");
+            // Console.WriteLine($"Serialized Context: {serializedContext}");
+            // Potentially escalate model based on configured thresholds (only for direct OpenAI client)
+            if (settings.UpgradeModelSteps > 0 && client is OpenAIClientBase updatable)
+            {
+                // First upgrade tier
+                if (!upgradedToStrong && iterationsWithoutResolution >= settings.UpgradeModelSteps && !string.IsNullOrWhiteSpace(settings.ModelStrong))
+                {
+                    updatable.SetModel(settings.ModelStrong);
+                    upgradedToStrong = true;
+                    Console.WriteLine($"[ModelUpgrade] Escalated to strong model: {updatable.CurrentModel}");
+                }
+                // Second upgrade tier
+                else if (upgradedToStrong && !upgradedToStrongest && iterationsWithoutResolution >= settings.UpgradeModelSteps * 2 && !string.IsNullOrWhiteSpace(settings.ModelStrongest))
+                {
+                    updatable.SetModel(settings.ModelStrongest);
+                    upgradedToStrongest = true;
+                    Console.WriteLine($"[ModelUpgrade] Escalated to strongest model: {updatable.CurrentModel}");
+                }
+                Console.WriteLine($"Model: {updatable.CurrentModel}");
+            }
+            else
+            {
+                Console.WriteLine($"Model: {settings.Model}"); // fallback / remote client prints base model
+            }
             Console.WriteLine(); 
+            
+            var fullResponse = await client.GetAIResponseAsync(request);
+            var llmText = OpenAIResponseParser.ExtractText(fullResponse);
 
-            var llmText = await client.GetAIResponseAsync(request);
 
-            File.AppendAllText(tmpFileName, $"System Prompt:{Environment.NewLine}{systemPrompt}{Environment.NewLine}User Context:{Environment.NewLine}{userContext}llmText:{Environment.NewLine}{llmText}{Environment.NewLine}", Encoding.UTF8);
+            File.AppendAllText(tmpFileName, $"User Context:{Environment.NewLine}{userContext}LLM Full Response:{Environment.NewLine}{fullResponse}{Environment.NewLine}", Encoding.UTF8);
             File.AppendAllText("steps.txt", $"[{DateTime.Now}]: {llmText}");
 
 
@@ -103,6 +136,10 @@ public static class AutomationEngine
             {
                 Console.WriteLine($"[Done] {plan.Done}");
                 break;
+            }
+            else
+            {
+                iterationsWithoutResolution++; // still not resolved this iteration
             }
 
             Console.WriteLine($"Received {plan.Steps.Count} step(s):");

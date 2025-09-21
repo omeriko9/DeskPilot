@@ -46,7 +46,7 @@ namespace DesktopAssist.Screen
             }
 
             // Vertical lines + labels on top & bottom
-            for (int x = 0; x <= w; x += minor)
+            for (int x = 0; x < w; x += minor)
             {
                 bool isMajor = (x % major) == 0;
                 g.DrawLine(isMajor ? penMajor : penMinor, x, 0, x, h);
@@ -59,7 +59,7 @@ namespace DesktopAssist.Screen
             }
 
             // Horizontal lines + labels on left & right
-            for (int y = 0; y <= h; y += minor)
+            for (int y = 0; y < h; y += minor)
             {
                 bool isMajor = (y % major) == 0;
                 g.DrawLine(isMajor ? penMajor : penMinor, 0, y, w, y);
@@ -71,8 +71,8 @@ namespace DesktopAssist.Screen
                 }
             }
 
-            // Corner banner with exact image size and origin
-            string banner = $"image={w}x{h} px | origin=(0,0) top-left | grid: minor=50, major=200";
+            // Corner banner with exact image size and grid parameters
+            string banner = $"image={w}x{h} px | origin=(0,0) | grid: minor={minor}, major={major}";
             var size = g.MeasureString(banner, font);
             var rect = new RectangleF(8, h - size.Height - 10, size.Width + 14, size.Height + 6);
             using (var bg = new SolidBrush(Color.FromArgb(180, 0, 0, 0))) g.FillRectangle(bg, rect);
@@ -190,7 +190,7 @@ namespace DesktopAssist.Screen
             bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
 
             var png = ms.ToArray();
-            ScreenSnapshotInfo.SetImageSize(bmp.Size);
+            ScreenSnapshotInfo.SetImageRegion(vx, vy, vw, vh);
             return (png, bmp.Size);
         }
 
@@ -213,7 +213,7 @@ namespace DesktopAssist.Screen
             bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
 
             var png = ms.ToArray();
-            ScreenSnapshotInfo.SetImageSize(bmp.Size);
+            ScreenSnapshotInfo.SetImageRegion(bounds.X, bounds.Y, bounds.Width, bounds.Height);
             return (png, bmp.Size);
         }
 
@@ -338,10 +338,10 @@ namespace DesktopAssist.Screen
 
 
             var (pngBytes, size) = CaptureDesktopPng(); // CaptureVirtualDesktopPng();
-            //var pngWithAxes = DrawAxesOverlay(pngBytes, size.Width, size.Height);
+            var pngWithAxes = DrawAxesOverlay(pngBytes, size.Width, size.Height);
             //var pngFinal = DrawCursorOverlay(pngWithAxes, size.Width, size.Height);
             //var final2 = DrawInsetAroundCursor(pngFinal, size.Width, size.Height);
-            var final2 = pngBytes;
+            var final2 = pngWithAxes;
             string screenshotBase64 = Convert.ToBase64String(final2);
 
             // (Optionally) log:

@@ -23,7 +23,7 @@ namespace DesktopAssist.Llm.Models
         {
             var content = new LlmInferenceRequest
             {
-                Model = Model,
+                Model = CurrentModel,
                 Input = new List<LlmRoleMessage>
                 {
                     new LlmRoleMessage
@@ -64,7 +64,7 @@ namespace DesktopAssist.Llm.Models
             }
 
             var extracted = OpenAIResponseParser.ExtractText(body, m => RaiseInfo(m));
-            return extracted ?? body;
+            return body;
         }
     }
 }

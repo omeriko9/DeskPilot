@@ -77,6 +77,10 @@ public static class ScreenSnapshotInfo
 
     public static int LastImageWidth { get; private set; }
     public static int LastImageHeight { get; private set; }
+    // Origin (in screen coordinates) of the last captured image. For primary-screen capture this
+    // will be that screen's bounds.X/Y; for virtual desktop capture it matches VirtualLeft/Top.
+    public static int LastImageOriginLeft { get; private set; }
+    public static int LastImageOriginTop { get; private set; }
 
     public static void RefreshVirtualMetrics()
     {
@@ -92,16 +96,25 @@ public static class ScreenSnapshotInfo
         LastImageHeight = s.Height;
     }
 
+    // Preferred going forward: explicitly set both origin and size of the captured image region.
+    public static void SetImageRegion(int left, int top, int width, int height)
+    {
+        LastImageOriginLeft = left;
+        LastImageOriginTop = top;
+        LastImageWidth = width;
+        LastImageHeight = height;
+    }
+
     public static (int x, int y) MapFromImagePx(int imgX, int imgY)
     {
-        if (LastImageWidth <= 0 || LastImageHeight <= 0 || VirtualWidth <= 0 || VirtualHeight <= 0)
-            return (imgX + VirtualLeft, imgY + VirtualTop); // fallback
+        // Direct mapping: image pixel (0,0) corresponds to LastImageOriginLeft/Top.
+        // No scaling because we intentionally capture only the primary (or exact) region.
+        if (LastImageWidth <= 0 || LastImageHeight <= 0)
+            return (imgX, imgY); // insufficient info; assume already screen coords
 
-        var sx = (double)VirtualWidth / LastImageWidth;
-        var sy = (double)VirtualHeight / LastImageHeight;
-        int x = (int)Math.Round(VirtualLeft + imgX * sx);
-        int y = (int)Math.Round(VirtualTop + imgY * sy);
-        return ClampToVirtual(x, y);
+        int x = LastImageOriginLeft + imgX;
+        int y = LastImageOriginTop + imgY;
+        return (x, y);
     }
 
     public static (int x, int y) MapFromNorm(double xNorm, double yNorm)

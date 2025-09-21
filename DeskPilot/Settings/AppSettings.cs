@@ -10,8 +10,14 @@ public sealed record AppSettings
     private const string SettingsFolder = "";
     private const string SettingsFileName = "settings.json";
 
+    public string LogBaseFileName { get; init; } = "Output.txt";
+
     public string ApiKey { get; init; } = string.Empty;
     public string Model { get; init; } = "gpt-4.1";
+    // Optional escalation chain for progressively stronger models
+    public string ModelStrong { get; init; } = string.Empty; // first upgrade tier
+    public string ModelStrongest { get; init; } = string.Empty; // second upgrade tier
+    public int UpgradeModelSteps { get; init; } = 0; // steps (iterations) without resolution before each upgrade
     public string BaseUrl { get; init; } = "https://api.openai.com/v1/";
     public int MaxSteps { get; init; } = 30;
     public int StepDelayMs { get; init; } = 500; // artificial delay between executed steps
